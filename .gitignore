@@ -5,8 +5,7 @@ venv/
 .env
 *.env
 
-models/*.pkl
-models/*.joblib
+
 
 data/raw/*
 data/processed/*

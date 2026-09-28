@@ -1,7 +1,10 @@
 import requests
 import streamlit as st
+import os
 
-API_URL = "http://127.0.0.1:8000/predict"
+API_URL = (
+    os.getenv("PRODINTEL_API_URL", "http://127.0.0.1:8000").rstrip("/") + "/predict"
+)
 
 st.set_page_config(
     page_title="ProdIntel - Customer Intelligence",
