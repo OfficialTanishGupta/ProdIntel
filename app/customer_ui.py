@@ -5,7 +5,7 @@ API_URL = "http://127.0.0.1:8000/predict"
 
 st.set_page_config(
     page_title="ProdIntel - Customer Intelligence",
-    page_icon="📊",  # Added a default icon
+    page_icon="📊",
     layout="wide",
 )
 
@@ -95,14 +95,31 @@ if submitted:
         "payment_method": payment_method,
     }
 
-    # Added a spinner context manager for better UX
     with st.spinner("Connecting to API and calculating prediction..."):
         try:
             response = requests.post(API_URL, json=customer_data, timeout=10)
             response.raise_for_status()
             result = response.json()
 
-            # Moved rendering code safely inside the successful block
+        except requests.exceptions.ConnectionError:
+            st.error(
+                "Customer Churn API is unavailable. " "Please start the FastAPI server."
+            )
+
+        except requests.exceptions.Timeout:
+            st.error("The prediction request timed out. " "Please try again.")
+
+        except requests.exceptions.HTTPError:
+            st.error(
+                "The API rejected the customer data. "
+                "Please check the entered values."
+            )
+
+        except requests.exceptions.RequestException as error:
+            st.error("An unexpected API error occurred.")
+            st.code(str(error))
+
+        else:
             prediction = result["prediction"]
             probability = result["churn_probability"]
 
@@ -114,18 +131,14 @@ if submitted:
 
             if prediction == "Yes":
                 st.warning(
-                    "The model predicts that this customer belongs to the churn class."
+                    "The model predicts that this customer "
+                    "belongs to the churn class."
                 )
             else:
                 st.success(
-                    "The model predicts that this customer belongs to the non-churn class."
+                    "The model predicts that this customer "
+                    "belongs to the non-churn class."
                 )
 
-        except requests.exceptions.RequestException as error:
-            st.error("Unable to connect to the Customer Churn API.")
-            st.code(str(error))
-
-
 st.divider()
-
-st.caption("ProdIntel Customer Intelligence | " "ML-powered customer churn prediction")
+st.caption("ProdIntel Customer Intelligence | ML-powered customer churn prediction")
