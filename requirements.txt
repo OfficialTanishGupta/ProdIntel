@@ -11,3 +11,4 @@ streamlit
 requests
 pytest
 httpx
+shap

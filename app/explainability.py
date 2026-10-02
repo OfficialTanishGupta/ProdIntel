@@ -10,33 +10,43 @@ def explain_prediction(model, customer_data: pd.DataFrame, top_n: int = 5):
     preprocessor = model.named_steps["preprocessor"]
     classifier = model.named_steps["model"]
 
-    # Transform the original customer data exactly as the model does
+    # Apply the same preprocessing used by the trained model
     transformed_data = preprocessor.transform(customer_data)
 
     # Get transformed feature names
     feature_names = preprocessor.get_feature_names_out()
 
-    # Create SHAP explainer for the Random Forest
+    # SHAP explainer for Random Forest
     explainer = shap.TreeExplainer(classifier)
 
     # Calculate SHAP values
     shap_values = explainer.shap_values(transformed_data)
 
-    # SHAP output can differ depending on SHAP version/model
+    # SHAP 0.52 can return:
+    # (samples, features, classes)
+    # For churn ("Yes"), class index 1 is used.
     if isinstance(shap_values, list):
         values = shap_values[1][0]
+    elif len(shap_values.shape) == 3:
+        values = shap_values[0, :, 1]
     else:
         values = shap_values[0]
 
-    # Create feature contribution table
+    values = values.flatten()
+
+    # Safety check
+    if len(feature_names) != len(values):
+        raise ValueError(
+            f"Feature/SHAP mismatch: "
+            f"{len(feature_names)} features vs {len(values)} SHAP values"
+        )
+
     explanation_df = pd.DataFrame({"feature": feature_names, "shap_value": values})
 
-    # Sort by absolute contribution
     explanation_df["absolute_impact"] = explanation_df["shap_value"].abs()
 
     explanation_df = explanation_df.sort_values("absolute_impact", ascending=False)
 
-    # Take the strongest contributors
     top_features = explanation_df.head(top_n)
 
     higher_risk = []
@@ -47,7 +57,6 @@ def explain_prediction(model, customer_data: pd.DataFrame, top_n: int = 5):
         feature = row["feature"]
         impact = float(row["shap_value"])
 
-        # Remove transformer prefixes
         clean_feature = feature.replace("num__", "")
         clean_feature = clean_feature.replace("cat__", "")
 
@@ -55,6 +64,7 @@ def explain_prediction(model, customer_data: pd.DataFrame, top_n: int = 5):
 
         if impact > 0:
             higher_risk.append(item)
+
         elif impact < 0:
             lower_risk.append(item)
 

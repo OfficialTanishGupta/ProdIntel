@@ -15,6 +15,12 @@ API_URL = (
     + "/predict"
 )
 
+RISK_STYLES = {
+    "Low": {"color": "#15803d", "bg": "#f0fdf4", "border": "#bbf7d0"},
+    "Moderate": {"color": "#b45309", "bg": "#fffbeb", "border": "#fde68a"},
+    "High": {"color": "#b91c1c", "bg": "#fef2f2", "border": "#fecaca"},
+}
+
 
 # --------------------------------------------------
 # Page Configuration
@@ -28,51 +34,352 @@ st.set_page_config(
 
 
 # --------------------------------------------------
-# Custom Styling
+# Styling
 # --------------------------------------------------
 
 st.markdown(
     """
-    <style>
-        .main-title {
-            font-size: 2.2rem;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
-        }
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-        .subtitle {
-            color: #666666;
-            font-size: 1rem;
-            margin-bottom: 1.5rem;
-        }
+:root { color-scheme: light; }
 
-        .section-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-top: 1rem;
-            margin-bottom: 0.8rem;
-        }
+html, body, [class*="css"], .stApp, button, input, select, textarea {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
 
-        .result-card {
-            padding: 1.2rem;
-            border-radius: 10px;
-            border: 1px solid #dddddd;
-            margin-top: 1rem;
-        }
+.stApp {
+    background: #f8fafc;
+    color: #0f172a;
+}
 
-        .small-label {
-            color: #666666;
-            font-size: 0.85rem;
-        }
+.stApp p, .stApp span, .stApp li {
+    color: inherit;
+}
 
-        .big-value {
-            font-size: 1.8rem;
-            font-weight: 700;
-        }
-    </style>
-    """,
+#MainMenu, footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent; }
+
+.block-container {
+    max-width: 1180px;
+    padding-top: 2.2rem;
+    padding-bottom: 3rem;
+}
+
+/* Hero */
+.hero {
+    padding: 2rem 2.2rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%);
+    margin-bottom: 1.6rem;
+}
+.hero-eyebrow {
+    color: #94a3b8 !important;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+.hero-title {
+    color: #f8fafc !important;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+.hero-subtitle {
+    color: #cbd5e1 !important;
+    font-size: 0.98rem;
+    margin-top: 0.4rem;
+    font-weight: 400;
+}
+
+/* Section headings */
+.section-title {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.1rem;
+}
+.section-desc {
+    color: #64748b;
+    font-size: 0.82rem;
+    margin-bottom: 0.8rem;
+}
+
+/* Card containers (keyed containers + fallback for bordered wrapper) */
+[class*="st-key-card"],
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+[class*="st-key-card"] { padding: 1.2rem 1.3rem; }
+
+/* Nested wrappers should not double-draw borders */
+[class*="st-key-card"] div[data-testid="stVerticalBlockBorderWrapper"] {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+/* Form wrapper: no extra frame */
+div[data-testid="stForm"] {
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+/* Widget labels */
+label, label p, div[data-testid="stWidgetLabel"] p {
+    color: #334155 !important;
+    font-size: 0.83rem !important;
+    font-weight: 500 !important;
+}
+
+/* Inputs & selects: force light appearance */
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"],
+div[data-baseweb="base-input"] {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    border-radius: 10px !important;
+}
+div[data-baseweb="select"] > div:hover,
+div[data-baseweb="input"]:hover {
+    border-color: #94a3b8 !important;
+}
+div[data-baseweb="select"] *,
+div[data-baseweb="input"] input,
+.stNumberInput input {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    background-color: transparent !important;
+}
+div[data-baseweb="select"] svg { fill: #64748b !important; }
+.stNumberInput button {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    border-color: #e2e8f0 !important;
+}
+.stNumberInput button svg { fill: #334155 !important; }
+
+/* Dropdown menu */
+div[data-baseweb="popover"] div[data-baseweb="menu"],
+div[data-baseweb="popover"] ul {
+    background: #ffffff !important;
+}
+div[data-baseweb="popover"] li,
+div[data-baseweb="popover"] li * {
+    color: #0f172a !important;
+    background: transparent;
+}
+div[data-baseweb="popover"] li:hover,
+div[data-baseweb="popover"] li[aria-selected="true"] {
+    background: #f1f5f9 !important;
+}
+
+/* Submit button */
+div[data-testid="stFormSubmitButton"] button {
+    background: #0f172a;
+    color: #ffffff;
+    border: none;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+    transition: all 0.2s ease;
+}
+div[data-testid="stFormSubmitButton"] button:hover {
+    background: #1e293b;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+    color: #ffffff;
+}
+div[data-testid="stFormSubmitButton"] button p { color: #ffffff !important; }
+
+/* Result */
+.gauge-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.gauge {
+    width: 170px;
+    height: 170px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.gauge-inner {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.gauge-value {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+.gauge-label {
+    font-size: 0.72rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 0.15rem;
+}
+.badge {
+    display: inline-block;
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid;
+}
+.result-heading {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    margin: 0.7rem 0 0.3rem 0;
+}
+.result-text {
+    color: #475569;
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+/* Stat tiles */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.8rem;
+    margin-top: 0.4rem;
+}
+.stat-tile {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+}
+.stat-label {
+    color: #64748b;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+}
+.stat-value {
+    color: #0f172a;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 0.25rem;
+}
+
+/* Recommendations */
+.reco {
+    display: flex;
+    gap: 0.7rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+.reco:last-child { border-bottom: none; }
+.reco-dot {
+    flex: 0 0 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #0f172a;
+    margin-top: 0.5rem;
+}
+
+.footer-note {
+    text-align: center;
+    color: #475569;
+    font-size: 0.8rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+</style>
+""",
     unsafe_allow_html=True,
 )
+
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+
+
+def section_header(title: str, description: str) -> None:
+    st.markdown(
+        f'<div class="section-title">{title}</div>'
+        f'<div class="section-desc">{description}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def stat_tile(label: str, value: str) -> str:
+    return (
+        '<div class="stat-tile">'
+        f'<div class="stat-label">{label}</div>'
+        f'<div class="stat-value">{value}</div>'
+        "</div>"
+    )
+
+
+def build_recommendations(data: dict, risk_band: str) -> list:
+    if risk_band == "Low":
+        return [
+            "No immediate retention action required. "
+            "Continue regular engagement and monitor account changes."
+        ]
+
+    tips = []
+
+    if data["contract"] == "Month-to-month":
+        tips.append(
+            "Offer an incentive to move from a month-to-month plan "
+            "to a one- or two-year contract."
+        )
+    if data["internet_service"] == "Fiber optic" and data["tech_support"] == "No":
+        tips.append(
+            "Bundle Tech Support with the Fiber optic plan to improve "
+            "service experience."
+        )
+    if data["internet_service"] != "No" and data["online_security"] == "No":
+        tips.append(
+            "Promote Online Security as a value-added service to deepen "
+            "product adoption."
+        )
+    if data["payment_method"] == "Electronic check":
+        tips.append("Encourage automatic payment methods to reduce billing friction.")
+    if data["tenure_months"] < 12:
+        tips.append(
+            "Enroll the customer in an early-lifecycle onboarding and "
+            "check-in program."
+        )
+    if not tips:
+        tips.append(
+            "Schedule a proactive outreach to review satisfaction " "and plan fit."
+        )
+
+    return tips[:4]
 
 
 # --------------------------------------------------
@@ -80,13 +387,12 @@ st.markdown(
 # --------------------------------------------------
 
 st.markdown(
-    '<div class="main-title">ProdIntel - Customer Intelligence</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="subtitle">'
+    '<div class="hero">'
+    '<div class="hero-eyebrow">ProdIntel</div>'
+    '<div class="hero-title">Customer Intelligence</div>'
+    '<div class="hero-subtitle">'
     "ML-powered customer churn analysis and business intelligence"
+    "</div>"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -96,131 +402,140 @@ st.markdown(
 # Customer Input Form
 # --------------------------------------------------
 
-with st.form("customer_churn_form"):
+with st.form("customer_churn_form", border=False):
 
-    st.markdown(
-        '<div class="section-title">Customer Information</div>',
-        unsafe_allow_html=True,
-    )
+    top_left, top_right = st.columns(2, gap="medium")
 
-    col1, col2 = st.columns(2)
+    with top_left:
+        with st.container(border=True, key="card_account"):
+            section_header(
+                "Account & Billing",
+                "Tenure and financial value of the customer",
+            )
 
-    with col1:
+            a1, a2 = st.columns(2)
 
-        tenure_months = st.number_input(
-            "Tenure Months",
-            min_value=0,
-            value=12,
-            step=1,
+            with a1:
+                tenure_months = st.number_input(
+                    "Tenure Months",
+                    min_value=0,
+                    value=12,
+                    step=1,
+                )
+                total_charges = st.number_input(
+                    "Total Charges",
+                    min_value=0.0,
+                    value=840.0,
+                    step=10.0,
+                )
+
+            with a2:
+                monthly_charges = st.number_input(
+                    "Monthly Charges",
+                    min_value=0.0,
+                    value=70.0,
+                    step=1.0,
+                )
+                cltv = st.number_input(
+                    "CLTV",
+                    min_value=0.0,
+                    value=5000.0,
+                    step=100.0,
+                )
+
+    with top_right:
+        with st.container(border=True, key="card_contract"):
+            section_header(
+                "Contract & Payment",
+                "Commitment level and billing preferences",
+            )
+
+            c1, c2 = st.columns(2)
+
+            with c1:
+                contract = st.selectbox(
+                    "Contract",
+                    ["Month-to-month", "One year", "Two year"],
+                )
+                paperless_billing = st.selectbox(
+                    "Paperless Billing",
+                    ["Yes", "No"],
+                )
+
+            with c2:
+                payment_method = st.selectbox(
+                    "Payment Method",
+                    [
+                        "Electronic check",
+                        "Mailed check",
+                        "Bank transfer (automatic)",
+                        "Credit card (automatic)",
+                    ],
+                )
+
+    with st.container(border=True, key="card_demographics"):
+        section_header(
+            "Demographics",
+            "Basic customer profile",
         )
 
-        monthly_charges = st.number_input(
-            "Monthly Charges",
-            min_value=0.0,
-            value=70.0,
-            step=1.0,
+        d1, d2, d3, d4 = st.columns(4)
+
+        with d1:
+            gender = st.selectbox("Gender", ["Male", "Female"])
+        with d2:
+            senior_citizen = st.selectbox("Senior Citizen", [0, 1])
+        with d3:
+            partner = st.selectbox("Partner", ["Yes", "No"])
+        with d4:
+            dependents = st.selectbox("Dependents", ["Yes", "No"])
+
+    with st.container(border=True, key="card_services"):
+        section_header(
+            "Services",
+            "Phone and internet services subscribed by the customer",
         )
 
-        total_charges = st.number_input(
-            "Total Charges",
-            min_value=0.0,
-            value=840.0,
-            step=10.0,
-        )
+        s1, s2, s3 = st.columns(3)
 
-        cltv = st.number_input(
-            "CLTV",
-            min_value=0.0,
-            value=5000.0,
-            step=100.0,
-        )
+        with s1:
+            phone_service = st.selectbox("Phone Service", ["Yes", "No"])
+            multiple_lines = st.selectbox(
+                "Multiple Lines",
+                ["Yes", "No", "No phone service"],
+            )
+            internet_service = st.selectbox(
+                "Internet Service",
+                ["DSL", "Fiber optic", "No"],
+            )
 
-        gender = st.selectbox(
-            "Gender",
-            ["Male", "Female"],
-        )
+        with s2:
+            online_security = st.selectbox(
+                "Online Security",
+                ["Yes", "No", "No internet service"],
+            )
+            online_backup = st.selectbox(
+                "Online Backup",
+                ["Yes", "No", "No internet service"],
+            )
+            device_protection = st.selectbox(
+                "Device Protection",
+                ["Yes", "No", "No internet service"],
+            )
 
-        senior_citizen = st.selectbox(
-            "Senior Citizen",
-            [0, 1],
-        )
-
-        partner = st.selectbox(
-            "Partner",
-            ["Yes", "No"],
-        )
-
-        dependents = st.selectbox(
-            "Dependents",
-            ["Yes", "No"],
-        )
-
-        phone_service = st.selectbox(
-            "Phone Service",
-            ["Yes", "No"],
-        )
-
-        multiple_lines = st.selectbox(
-            "Multiple Lines",
-            ["Yes", "No", "No phone service"],
-        )
-
-    with col2:
-
-        internet_service = st.selectbox(
-            "Internet Service",
-            ["DSL", "Fiber optic", "No"],
-        )
-
-        online_security = st.selectbox(
-            "Online Security",
-            ["Yes", "No", "No internet service"],
-        )
-
-        online_backup = st.selectbox(
-            "Online Backup",
-            ["Yes", "No", "No internet service"],
-        )
-
-        device_protection = st.selectbox(
-            "Device Protection",
-            ["Yes", "No", "No internet service"],
-        )
-
-        tech_support = st.selectbox(
-            "Tech Support",
-            ["Yes", "No", "No internet service"],
-        )
-
-        streaming_tv = st.selectbox(
-            "Streaming TV",
-            ["Yes", "No", "No internet service"],
-        )
-
-        streaming_movies = st.selectbox(
-            "Streaming Movies",
-            ["Yes", "No", "No internet service"],
-        )
-
-        contract = st.selectbox(
-            "Contract",
-            ["Month-to-month", "One year", "Two year"],
-        )
-
-        paperless_billing = st.selectbox(
-            "Paperless Billing",
-            ["Yes", "No"],
-        )
-
-        payment_method = st.selectbox(
-            "Payment Method",
-            [
-                "Electronic check",
-                "Mailed check",
-                "Bank transfer (automatic)",
-                "Credit card (automatic)",
-            ],
-        )
+        with s3:
+            tech_support = st.selectbox(
+                "Tech Support",
+                ["Yes", "No", "No internet service"],
+            )
+            streaming_tv = st.selectbox(
+                "Streaming TV",
+                ["Yes", "No", "No internet service"],
+            )
+            streaming_movies = st.selectbox(
+                "Streaming Movies",
+                ["Yes", "No", "No internet service"],
+            )
 
     submitted = st.form_submit_button(
         "Predict Customer Churn",
@@ -298,6 +613,7 @@ if submitted:
     prediction = result["prediction"]
     probability = float(result["churn_probability"])
 
+    probability_clamped = min(max(probability, 0.0), 1.0)
     probability_percent = probability * 100
 
     # --------------------------------------------------
@@ -318,95 +634,108 @@ if submitted:
             "The customer shows a relatively high estimated churn probability."
         )
 
+    style = RISK_STYLES[risk_band]
+
+    if prediction == "Yes":
+        prediction_heading = "Likely to churn"
+        prediction_text = (
+            "The model predicts that this customer belongs to the churn class. "
+            "The customer may require additional retention analysis or engagement."
+        )
+    else:
+        prediction_heading = "Likely to stay"
+        prediction_text = (
+            "The model predicts that this customer belongs to the non-churn class."
+        )
+
     # --------------------------------------------------
     # Results
     # --------------------------------------------------
 
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    st.subheader("Prediction Result")
+    gauge_html = (
+        '<div class="gauge-wrap">'
+        f'<div class="gauge" style="background: conic-gradient('
+        f'{style["color"]} {probability_clamped * 360:.1f}deg, #e2e8f0 0deg);">'
+        '<div class="gauge-inner">'
+        f'<div class="gauge-value">{probability_percent:.1f}%</div>'
+        '<div class="gauge-label">Churn Risk</div>'
+        "</div></div></div>"
+    )
 
-    metric1, metric2, metric3 = st.columns(3)
+    summary_html = (
+        f'<span class="badge" style="color:{style["color"]};'
+        f'background:{style["bg"]};border-color:{style["border"]};">'
+        f"{risk_band} Risk</span>"
+        f'<div class="result-heading">{prediction_heading}</div>'
+        f'<div class="result-text">{risk_message}<br>{prediction_text}</div>'
+    )
 
-    with metric1:
-        st.metric(
-            "Churn Probability",
-            f"{probability_percent:.2f}%",
+    with st.container(border=True, key="card_result"):
+        res_left, res_right = st.columns(
+            [1, 2], gap="large", vertical_alignment="center"
         )
 
-    with metric2:
-        st.metric(
-            "Model Prediction",
-            prediction,
-        )
+        with res_left:
+            st.markdown(gauge_html, unsafe_allow_html=True)
 
-    with metric3:
-        st.metric(
-            "Risk Band",
-            risk_band,
-        )
+        with res_right:
+            st.markdown(summary_html, unsafe_allow_html=True)
 
-    st.progress(min(max(probability, 0.0), 1.0))
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # --------------------------------------------------
-    # Business Interpretation
+    # Snapshot + Recommendations
     # --------------------------------------------------
 
-    st.subheader("Business Insight")
+    snap_col, reco_col = st.columns([3, 2], gap="medium")
 
-    st.write(risk_message)
+    with snap_col:
+        with st.container(border=True, key="card_snapshot"):
+            section_header(
+                "Customer Snapshot",
+                "Key indicators submitted for this prediction",
+            )
 
-    if prediction == "Yes":
+            tiles = "".join(
+                [
+                    stat_tile("Tenure", f"{tenure_months} months"),
+                    stat_tile("Monthly Charges", f"{monthly_charges:,.2f}"),
+                    stat_tile("Total Charges", f"{total_charges:,.2f}"),
+                    stat_tile("Contract", contract),
+                    stat_tile("Internet Service", internet_service),
+                    stat_tile("Payment Method", payment_method),
+                ]
+            )
 
-        st.warning(
-            "The model predicts that this customer belongs to "
-            "the churn class. The customer may require additional "
-            "retention analysis or engagement."
-        )
+            st.markdown(
+                f'<div class="stat-grid">{tiles}</div>',
+                unsafe_allow_html=True,
+            )
 
-    else:
+    with reco_col:
+        with st.container(border=True, key="card_reco"):
+            section_header(
+                "Retention Considerations",
+                "Suggested actions based on the customer profile",
+            )
 
-        st.success(
-            "The model predicts that this customer belongs to " "the non-churn class."
-        )
+            recos = "".join(
+                f'<div class="reco"><div class="reco-dot"></div><div>{tip}</div></div>'
+                for tip in build_recommendations(customer_data, risk_band)
+            )
 
-    # --------------------------------------------------
-    # Customer Indicators
-    # --------------------------------------------------
-
-    st.subheader("Customer Indicators")
-
-    indicator1, indicator2, indicator3, indicator4 = st.columns(4)
-
-    with indicator1:
-        st.metric(
-            "Tenure",
-            f"{tenure_months} months",
-        )
-
-    with indicator2:
-        st.metric(
-            "Monthly Charges",
-            f"{monthly_charges:.2f}",
-        )
-
-    with indicator3:
-        st.metric(
-            "Contract",
-            contract,
-        )
-
-    with indicator4:
-        st.metric(
-            "Internet Service",
-            internet_service,
-        )
+            st.markdown(recos, unsafe_allow_html=True)
 
 
 # --------------------------------------------------
 # Footer
 # --------------------------------------------------
 
-st.divider()
-
-st.caption("ProdIntel Customer Intelligence | " "ML-powered customer churn prediction")
+st.markdown(
+    '<div class="footer-note">'
+    "ProdIntel Customer Intelligence · ML-powered customer churn prediction"
+    "</div>",
+    unsafe_allow_html=True,
+)
