@@ -41,7 +41,21 @@ def explain_prediction(model, customer_data: pd.DataFrame, top_n: int = 5):
             f"{len(feature_names)} features vs {len(values)} SHAP values"
         )
 
-    explanation_df = pd.DataFrame({"feature": feature_names, "shap_value": values})
+    # Keep only features that are actually active for this customer.
+    # Numeric features are always retained.
+    active_features = []
+
+    for i, feature in enumerate(feature_names):
+        if feature.startswith("num__"):
+            active_features.append(True)
+        else:
+            active_features.append(transformed_data[0, i] != 0)
+
+    explanation_df = pd.DataFrame(
+        {"feature": feature_names, "shap_value": values, "active": active_features}
+    )
+
+    explanation_df = explanation_df[explanation_df["active"]].copy()
 
     explanation_df["absolute_impact"] = explanation_df["shap_value"].abs()
 

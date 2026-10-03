@@ -1,5 +1,4 @@
 import os
-
 import requests
 import streamlit as st
 
@@ -144,7 +143,7 @@ label, label p, div[data-testid="stWidgetLabel"] p {
 div[data-baseweb="select"] > div,
 div[data-baseweb="input"],
 div[data-baseweb="base-input"] {
-    background-color: #ffffff !important;
+    background-color: #0f172a !important;
     border-color: #cbd5e1 !important;
     border-radius: 10px !important;
 }
@@ -155,8 +154,8 @@ div[data-baseweb="input"]:hover {
 div[data-baseweb="select"] *,
 div[data-baseweb="input"] input,
 .stNumberInput input {
-    color: #0f172a !important;
-    -webkit-text-fill-color: #0f172a !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
     background-color: transparent !important;
 }
 div[data-baseweb="select"] svg { fill: #64748b !important; }
@@ -307,6 +306,15 @@ div[data-testid="stFormSubmitButton"] button p { color: #ffffff !important; }
     margin-top: 0.5rem;
 }
 
+.recommendation-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.6rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
 .footer-note {
     text-align: center;
     color: #475569;
@@ -376,7 +384,7 @@ def build_recommendations(data: dict, risk_band: str) -> list:
         )
     if not tips:
         tips.append(
-            "Schedule a proactive outreach to review satisfaction " "and plan fit."
+            "Schedule a proactive outreach to review satisfaction and plan fit."
         )
 
     return tips[:4]
@@ -612,6 +620,9 @@ if submitted:
 
     prediction = result["prediction"]
     probability = float(result["churn_probability"])
+    explanation = result.get("explanation", {})
+    higher_risk = explanation.get("higher_risk", [])
+    lower_risk = explanation.get("lower_risk", [])
 
     probability_clamped = min(max(probability, 0.0), 1.0)
     probability_percent = probability * 100
@@ -684,6 +695,64 @@ if submitted:
             st.markdown(summary_html, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # -----------------------------
+    # Why this prediction? (Indented correctly inside `if submitted:`)
+    # -----------------------------
+
+    section_header(
+        "Why this prediction?", "Key factors influencing the model's churn assessment."
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("### Factors increasing churn risk")
+
+        if higher_risk:
+            for item in higher_risk:
+                feature = item["feature"]
+                impact = item["impact"]
+
+                feature = feature.replace("_", " — ")
+
+                st.markdown(
+                    f"""
+                    <div class="recommendation-card">
+                        <strong>{feature}</strong>
+                        <div style="margin-top:6px;">
+                            Model impact: <b>+{impact:.4f}</b>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info("No strong risk-increasing factors identified.")
+
+    with col2:
+        st.markdown("### Factors reducing churn risk")
+
+        if lower_risk:
+            for item in lower_risk:
+                feature = item["feature"]
+                impact = item["impact"]
+
+                feature = feature.replace("_", " — ")
+
+                st.markdown(
+                    f"""
+                    <div class="recommendation-card">
+                        <strong>{feature}</strong>
+                        <div style="margin-top:6px;">
+                            Model impact: <b>{impact:.4f}</b>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info("No strong risk-reducing factors identified.")
 
     # --------------------------------------------------
     # Snapshot + Recommendations
