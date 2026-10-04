@@ -66,7 +66,10 @@ def predict_churn(customer: CustomerChurnRequest):
     prediction = model.predict(customer_data)[0]
     probability = model.predict_proba(customer_data)[0][1]
 
-    explanation = explain_prediction(model, customer_data, top_n=5)
+    try:
+        explanation = explain_prediction(model, customer_data, top_n=5)
+    except Exception:
+        explanation = {"higher_risk": [], "lower_risk": []}
 
     return {
         "prediction": prediction,

@@ -721,7 +721,7 @@ if submitted:
                     <div class="recommendation-card">
                         <strong>{feature}</strong>
                         <div style="margin-top:6px;">
-                            Model impact: <b>+{impact:.4f}</b>
+                            Contribution to higher churn risk: <b>{impact:.4f}</b>
                         </div>
                     </div>
                     """,
@@ -745,7 +745,7 @@ if submitted:
                     <div class="recommendation-card">
                         <strong>{feature}</strong>
                         <div style="margin-top:6px;">
-                            Model impact: <b>{impact:.4f}</b>
+                            Contribution to lower churn risk: <b>{abs(impact):.4f}</b>
                         </div>
                     </div>
                     """,
