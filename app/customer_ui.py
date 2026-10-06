@@ -351,43 +351,48 @@ def stat_tile(label: str, value: str) -> str:
     )
 
 
-def build_recommendations(data: dict, risk_band: str) -> list:
-    if risk_band == "Low":
-        return [
-            "No immediate retention action required. "
-            "Continue regular engagement and monitor account changes."
-        ]
+def build_recommendations(data, risk_band):
+    recommendations = []
 
-    tips = []
+    if risk_band == "High":
+        recommendations.append(
+            "Prioritize this customer for proactive retention outreach."
+        )
+
+    elif risk_band == "Moderate":
+        recommendations.append(
+            "Monitor this customer closely and consider a targeted retention offer."
+        )
+
+    else:
+        recommendations.append("No immediate retention intervention is required.")
 
     if data["contract"] == "Month-to-month":
-        tips.append(
-            "Offer an incentive to move from a month-to-month plan "
-            "to a one- or two-year contract."
-        )
-    if data["internet_service"] == "Fiber optic" and data["tech_support"] == "No":
-        tips.append(
-            "Bundle Tech Support with the Fiber optic plan to improve "
-            "service experience."
-        )
-    if data["internet_service"] != "No" and data["online_security"] == "No":
-        tips.append(
-            "Promote Online Security as a value-added service to deepen "
-            "product adoption."
-        )
-    if data["payment_method"] == "Electronic check":
-        tips.append("Encourage automatic payment methods to reduce billing friction.")
-    if data["tenure_months"] < 12:
-        tips.append(
-            "Enroll the customer in an early-lifecycle onboarding and "
-            "check-in program."
-        )
-    if not tips:
-        tips.append(
-            "Schedule a proactive outreach to review satisfaction and plan fit."
+        recommendations.append(
+            "Consider offering an incentive to move the customer to a longer-term contract."
         )
 
-    return tips[:4]
+    if data["internet_service"] == "Fiber optic" and data["tech_support"] == "No":
+        recommendations.append(
+            "Consider offering Tech Support as part of a service bundle."
+        )
+
+    if data["internet_service"] != "No" and data["online_security"] == "No":
+        recommendations.append(
+            "Promote Online Security to strengthen the customer's service package."
+        )
+
+    if data["payment_method"] == "Electronic check":
+        recommendations.append(
+            "Encourage automatic payment methods to improve payment continuity."
+        )
+
+    if data["tenure_months"] < 12:
+        recommendations.append(
+            "Provide additional onboarding and early-lifecycle engagement."
+        )
+
+    return recommendations[:4]
 
 
 # --------------------------------------------------
@@ -658,6 +663,25 @@ if submitted:
         prediction_text = (
             "The model predicts that this customer belongs to the non-churn class."
         )
+
+    if risk_band == "High":
+        risk_summary = "This customer shows a high likelihood of churn and should receive proactive retention attention."
+    elif risk_band == "Moderate":
+        risk_summary = "This customer shows moderate churn risk and may benefit from targeted retention actions."
+    else:
+        risk_summary = "This customer currently shows low churn risk and does not require immediate intervention."
+
+    st.markdown(
+        f"""
+    <div class="recommendation-card">
+        <strong>Business Risk Summary</strong>
+        <div style="margin-top:8px;">
+            {risk_summary}
+        </div>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
     # --------------------------------------------------
     # Results
