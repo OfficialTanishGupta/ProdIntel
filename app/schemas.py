@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 class CustomerChurnRequest(BaseModel):
 
+    customer_id: str | None = None
+
     tenure_months: int = Field(ge=0)
     monthly_charges: float = Field(ge=0)
     total_charges: float = Field(ge=0)
