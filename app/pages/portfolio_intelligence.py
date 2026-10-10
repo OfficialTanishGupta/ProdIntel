@@ -161,6 +161,110 @@ if "portfolio_results" in st.session_state:
     col3.metric("Moderate Risk", f"{moderate:,}")
     col4.metric("Low Risk", f"{low:,}")
 
+    st.subheader("Business Impact Metrics")
+
+    # Match each prediction to its original customer record.
+    business_df = customers_df[["customer_id", "monthly_charges"]].merge(
+        results_df[["customer_id", "churn_probability", "risk_band"]],
+        on="customer_id",
+        how="inner",
+        validate="one_to_one",
+    )
+
+    total_customers = len(business_df)
+
+    predicted_churn_count = int((business_df["churn_probability"] >= 0.5).sum())
+
+    overall_churn_rate = (
+        predicted_churn_count / total_customers * 100 if total_customers else 0
+    )
+
+    high_risk_df = business_df[business_df["risk_band"] == "High"]
+
+    monthly_revenue_at_risk = high_risk_df["monthly_charges"].sum()
+
+    average_probability = (
+        business_df["churn_probability"].mean() * 100 if total_customers else 0
+    )
+
+    st.subheader("Customer Segmentation Insights")
+
+    segmentation_df = customers_df.merge(
+        results_df[["customer_id", "risk_band"]],
+        on="customer_id",
+        how="inner",
+        validate="one_to_one",
+    )
+
+    high_risk_customers = segmentation_df[segmentation_df["risk_band"] == "High"].copy()
+
+    if high_risk_customers.empty:
+        st.info("No high-risk customers were identified in this portfolio.")
+    else:
+        # Group customer tenure.
+        high_risk_customers["tenure_group"] = pd.cut(
+            high_risk_customers["tenure_months"],
+            bins=[-1, 12, 24, float("inf")],
+            labels=["0–12 months", "13–24 months", "25+ months"],
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("**Contract Type**")
+            st.bar_chart(
+                high_risk_customers["contract"].value_counts(),
+                horizontal=True,
+                height=220,
+            )
+
+        with col2:
+            st.markdown("**Customer Tenure**")
+            st.bar_chart(
+                high_risk_customers["tenure_group"]
+                .value_counts()
+                .reindex(
+                    ["0–12 months", "13–24 months", "25+ months"],
+                    fill_value=0,
+                ),
+                horizontal=True,
+                height=220,
+            )
+
+        with col3:
+            st.markdown("**Internet Service**")
+            st.bar_chart(
+                high_risk_customers["internet_service"].value_counts(),
+                horizontal=True,
+                height=220,
+            )
+
+        st.caption(
+            "These charts describe the uploaded high-risk segment. "
+            "They show associations in this portfolio, not proof "
+            "that a particular characteristic causes churn."
+        )
+
+    metric1, metric2, metric3 = st.columns(3)
+
+    metric1.metric(
+        "Predicted Churn Rate",
+        f"{overall_churn_rate:.1f}%",
+        help="Share of customers with a predicted churn probability of at least 50%.",
+    )
+
+    metric2.metric(
+        "Monthly Charges at High Risk",
+        f"{monthly_revenue_at_risk:,.2f}",
+        help="Sum of monthly charges for customers classified as High Risk. This is not confirmed revenue loss.",
+    )
+
+    metric3.metric(
+        "Average Churn Probability",
+        f"{average_probability:.1f}%",
+        help="Mean predicted churn probability across all uploaded customers.",
+    )
+
     st.subheader("Risk Distribution")
 
     distribution = pd.DataFrame(
@@ -170,7 +274,11 @@ if "portfolio_results" in st.session_state:
         }
     )
 
-    st.bar_chart(distribution.set_index("Risk Level"))
+    st.bar_chart(
+        distribution.set_index("Risk Level"),
+        horizontal=True,
+        height=220,
+    )
 
     st.subheader("Customer Risk Results")
 
