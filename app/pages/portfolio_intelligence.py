@@ -370,3 +370,52 @@ if "portfolio_results" in st.session_state:
         "Predictions estimate churn risk; they do not guarantee "
         "that a customer will leave."
     )
+
+    st.divider()
+    st.subheader("Executive Portfolio Summary")
+
+    summary_df = pd.DataFrame(
+        [
+            {
+                "Metric": "Total Customers Analyzed",
+                "Value": total,
+            },
+            {
+                "Metric": "High-Risk Customers",
+                "Value": high,
+            },
+            {
+                "Metric": "Moderate-Risk Customers",
+                "Value": moderate,
+            },
+            {
+                "Metric": "Low-Risk Customers",
+                "Value": low,
+            },
+            {
+                "Metric": "Predicted Churn Rate (%)",
+                "Value": round(overall_churn_rate, 2),
+            },
+            {
+                "Metric": "Average Churn Probability (%)",
+                "Value": round(average_probability, 2),
+            },
+            {
+                "Metric": "Monthly Charges Associated with High-Risk Customers",
+                "Value": round(float(monthly_revenue_at_risk), 2),
+            },
+        ]
+    )
+
+    st.dataframe(
+        summary_df,
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.download_button(
+        "Download Executive Summary",
+        data=summary_df.to_csv(index=False),
+        file_name="prodintel_executive_summary.csv",
+        mime="text/csv",
+    )
