@@ -304,6 +304,76 @@ if "portfolio_results" in st.session_state:
     )
 
     high_risk_df = priority_df[priority_df["risk_band"] == "High"].copy()
+    
+    # Customer-specific retention recommendations
+    st.subheader("Recommended Retention Actions")
+
+
+    def recommend_retention_actions(customer):
+        actions = []
+
+        if str(customer.get("contract", "")).strip().lower() == "month-to-month":
+            actions.append("Offer an incentive to switch to a longer-term contract.")
+
+        try:
+            if float(customer.get("tenure_months", 0)) < 12:
+                actions.append("Provide onboarding support and a proactive check-in.")
+        except (TypeError, ValueError):
+            pass
+
+        if str(customer.get("tech_support", "")).strip().lower() == "no":
+            actions.append("Review eligibility for a technical-support offer.")
+
+        if str(customer.get("online_security", "")).strip().lower() == "no":
+            actions.append("Explain available online-security options.")
+
+        if "electronic check" in str(customer.get("payment_method", "")).lower():
+            actions.append("Encourage convenient automatic payment options.")
+
+        if not actions:
+            actions.append("Arrange proactive customer outreach and review feedback.")
+
+        return " ".join(actions)
+
+
+    if high_risk_df.empty:
+        st.info("No high-risk customers currently require targeted actions.")
+    else:
+        # Use the original uploaded customer data and match by customer ID.
+        recommendation_df = customers_df.merge(
+            high_risk_df[["customer_id", "churn_probability", "risk_band"]],
+            on="customer_id",
+            how="inner",
+        )
+
+        recommendation_df["Recommended Actions"] = recommendation_df.apply(
+            recommend_retention_actions,
+            axis=1,
+        )
+
+        display_df = recommendation_df[
+            ["customer_id", "churn_probability", "Recommended Actions"]
+        ].copy()
+
+        display_df["churn_probability"] = (
+            display_df["churn_probability"] * 100
+        ).round(2).astype(str) + "%"
+
+        st.dataframe(
+            display_df,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        st.download_button(
+            "Download Retention Action Plan",
+            data=recommendation_df[
+                ["customer_id", "risk_band", "churn_probability", "Recommended Actions"]
+            ].to_csv(index=False),
+            file_name="prodintel_retention_action_plan.csv",
+            mime="text/csv",
+        )
+    
 
     if high_risk_df.empty:
         st.success("No customers are currently classified as high risk.")
