@@ -304,10 +304,9 @@ if "portfolio_results" in st.session_state:
     )
 
     high_risk_df = priority_df[priority_df["risk_band"] == "High"].copy()
-    
+
     # Customer-specific retention recommendations
     st.subheader("Recommended Retention Actions")
-
 
     def recommend_retention_actions(customer):
         actions = []
@@ -335,7 +334,6 @@ if "portfolio_results" in st.session_state:
 
         return " ".join(actions)
 
-
     if high_risk_df.empty:
         st.info("No high-risk customers currently require targeted actions.")
     else:
@@ -351,13 +349,15 @@ if "portfolio_results" in st.session_state:
             axis=1,
         )
 
+        # Adding recommendation feature
+
         display_df = recommendation_df[
             ["customer_id", "churn_probability", "Recommended Actions"]
         ].copy()
 
-        display_df["churn_probability"] = (
-            display_df["churn_probability"] * 100
-        ).round(2).astype(str) + "%"
+        display_df["churn_probability"] = (display_df["churn_probability"] * 100).round(
+            2
+        ).astype(str) + "%"
 
         st.dataframe(
             display_df,
@@ -373,7 +373,6 @@ if "portfolio_results" in st.session_state:
             file_name="prodintel_retention_action_plan.csv",
             mime="text/csv",
         )
-    
 
     if high_risk_df.empty:
         st.success("No customers are currently classified as high risk.")
