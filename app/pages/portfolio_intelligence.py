@@ -349,10 +349,46 @@ if "portfolio_results" in st.session_state:
             axis=1,
         )
 
-        # Adding recommendation feature
+        # Calculate a 0–100 retention priority score.
+        recommendation_df["Priority Score"] = (
+            recommendation_df["churn_probability"] * 100
+        ).round(1)
 
+        # Assign the next recommended business action.
+        def get_next_action(customer):
+            actions = str(customer.get("Recommended Actions", ""))
+
+            if "longer-term contract" in actions:
+                return "Contact customer about contract options"
+
+            if "onboarding support" in actions:
+                return "Schedule proactive customer check-in"
+
+            if "technical-support offer" in actions:
+                return "Review technical-support offer"
+
+            if "online-security options" in actions:
+                return "Discuss online-security options"
+
+            if "automatic payment options" in actions:
+                return "Discuss automatic payment options"
+
+            return "Arrange proactive retention outreach"
+
+        recommendation_df["Suggested Next Step"] = recommendation_df.apply(
+            get_next_action,
+            axis=1,
+        )
+
+        # Adding recommendation feature
         display_df = recommendation_df[
-            ["customer_id", "churn_probability", "Recommended Actions"]
+            [
+                "customer_id",
+                "churn_probability",
+                "Priority Score",
+                "Suggested Next Step",
+                "Recommended Actions",
+            ]
         ].copy()
 
         display_df["churn_probability"] = (display_df["churn_probability"] * 100).round(
@@ -360,7 +396,10 @@ if "portfolio_results" in st.session_state:
         ).astype(str) + "%"
 
         st.dataframe(
-            display_df,
+            display_df.sort_values(
+                "Priority Score",
+                ascending=False,
+            ),
             hide_index=True,
             use_container_width=True,
         )
@@ -368,7 +407,14 @@ if "portfolio_results" in st.session_state:
         st.download_button(
             "Download Retention Action Plan",
             data=recommendation_df[
-                ["customer_id", "risk_band", "churn_probability", "Recommended Actions"]
+                [
+                    "customer_id",
+                    "risk_band",
+                    "churn_probability",
+                    "Priority Score",
+                    "Suggested Next Step",
+                    "Recommended Actions",
+                ]
             ].to_csv(index=False),
             file_name="prodintel_retention_action_plan.csv",
             mime="text/csv",
