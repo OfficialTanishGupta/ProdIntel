@@ -380,6 +380,57 @@ if "portfolio_results" in st.session_state:
             axis=1,
         )
 
+        # Retention strategy insights
+        st.subheader("Retention Strategy Insights")
+
+        contract_risk = (
+            recommendation_df["contract"]
+            .astype(str)
+            .str.lower()
+            .eq("month-to-month")
+            .sum()
+        )
+
+        short_tenure_risk = (
+            pd.to_numeric(
+                recommendation_df["tenure_months"],
+                errors="coerce",
+            )
+            .lt(12)
+            .sum()
+        )
+
+        service_support_risk = (
+            recommendation_df["tech_support"]
+            .astype(str)
+            .str.lower()
+            .eq("no")
+            .sum()
+        )
+
+        metric1, metric2, metric3 = st.columns(3)
+
+        metric1.metric(
+            "Month-to-Month Customers",
+            int(contract_risk),
+        )
+
+        metric2.metric(
+            "Customers Under 12 Months",
+            int(short_tenure_risk),
+        )
+
+        metric3.metric(
+            "Customers Without Tech Support",
+            int(service_support_risk),
+        )
+
+        st.caption(
+            "These counts describe the high-risk customers in the analyzed portfolio. "
+            "They indicate potential retention opportunities, not proven causes of churn."
+        )
+
+
         # Adding recommendation feature
         display_df = recommendation_df[
             [
