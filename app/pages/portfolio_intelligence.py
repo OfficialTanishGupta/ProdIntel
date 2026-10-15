@@ -3,6 +3,8 @@ import os
 import pandas as pd
 import requests
 import streamlit as st
+from datetime import datetime
+from pathlib import Path
 
 API_URL = (
     os.getenv(
@@ -143,25 +145,56 @@ if uploaded_files:
             file.name for file in uploaded_files
         )
 
-if "portfolio_results" in st.session_state:
-    results_df = st.session_state["portfolio_results"].copy()
+        # Save a historical portfolio snapshot
+        history_dir = Path("data/portfolio_history")
+        history_dir.mkdir(parents=True, exist_ok=True)
 
-    st.divider()
-    st.subheader("Portfolio Risk Overview")
+        snapshot = pd.DataFrame(
+            [
+                {
+                    "analysis_timestamp": datetime.now().isoformat(timespec="seconds"),
+                    "total_customers": len(results_df),
+                    "high_risk": int((results_df["risk_band"] == "High").sum()),
+                    "moderate_risk": int((results_df["risk_band"] == "Moderate").sum()),
+                    "low_risk": int((results_df["risk_band"] == "Low").sum()),
+                    "average_churn_probability_pct": round(
+                        results_df["churn_probability"].mean() * 100, 2
+                    ),
+                }
+            ]
+        )
 
-    total = len(results_df)
-    high = int((results_df["risk_band"] == "High").sum())
-    moderate = int((results_df["risk_band"] == "Moderate").sum())
-    low = int((results_df["risk_band"] == "Low").sum())
+        history_file = history_dir / "portfolio_trend_history.csv"
 
-    col1, col2, col3, col4 = st.columns(4)
+        if history_file.exists():
+            snapshot.to_csv(
+                history_file,
+                mode="a",
+                header=False,
+                index=False,
+            )
+        else:
+            snapshot.to_csv(history_file, index=False)
 
-    col1.metric("Total Customers", f"{total:,}")
-    col2.metric("High Risk", f"{high:,}")
-    col3.metric("Moderate Risk", f"{moderate:,}")
-    col4.metric("Low Risk", f"{low:,}")
+        if "portfolio_results" in st.session_state:
+            results_df = st.session_state["portfolio_results"].copy()
 
-    st.subheader("Business Impact Metrics")
+            st.divider()
+            st.subheader("Portfolio Risk Overview")
+
+            total = len(results_df)
+            high = int((results_df["risk_band"] == "High").sum())
+            moderate = int((results_df["risk_band"] == "Moderate").sum())
+            low = int((results_df["risk_band"] == "Low").sum())
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.metric("Total Customers", f"{total:,}")
+            col2.metric("High Risk", f"{high:,}")
+            col3.metric("Moderate Risk", f"{moderate:,}")
+            col4.metric("Low Risk", f"{low:,}")
+
+            st.subheader("Business Impact Metrics")
 
     # Match each prediction to its original customer record.
     business_df = customers_df[["customer_id", "monthly_charges"]].merge(
@@ -401,11 +434,7 @@ if "portfolio_results" in st.session_state:
         )
 
         service_support_risk = (
-            recommendation_df["tech_support"]
-            .astype(str)
-            .str.lower()
-            .eq("no")
-            .sum()
+            recommendation_df["tech_support"].astype(str).str.lower().eq("no").sum()
         )
 
         metric1, metric2, metric3 = st.columns(3)
@@ -429,7 +458,6 @@ if "portfolio_results" in st.session_state:
             "These counts describe the high-risk customers in the analyzed portfolio. "
             "They indicate potential retention opportunities, not proven causes of churn."
         )
-
 
         # Adding recommendation feature
         display_df = recommendation_df[
