@@ -139,8 +139,9 @@ if uploaded_files:
         if len(results_df) != len(customers_df):
             st.error("The API returned an unexpected number of results.")
             st.stop()
+        st.session_state["portfolio_results"] = results_df.copy()
+        st.session_state["portfolio_customers"] = customers_df.copy()
 
-        st.session_state["portfolio_results"] = results_df
         st.session_state["portfolio_source"] = ", ".join(
             file.name for file in uploaded_files
         )
@@ -176,8 +177,9 @@ if uploaded_files:
         else:
             snapshot.to_csv(history_file, index=False)
 
-        if "portfolio_results" in st.session_state:
+        if "portfolio_results" in st.session_state and uploaded_files:
             results_df = st.session_state["portfolio_results"].copy()
+            customers_df = st.session_state["portfolio_customers"].copy()
 
             st.divider()
             st.subheader("Portfolio Risk Overview")
@@ -197,6 +199,10 @@ if uploaded_files:
             st.subheader("Business Impact Metrics")
 
     # Match each prediction to its original customer record.
+    customers_df = st.session_state.get(
+        "portfolio_customers",
+        customers_df,
+    ).copy()
     business_df = customers_df[["customer_id", "monthly_charges"]].merge(
         results_df[["customer_id", "churn_probability", "risk_band"]],
         on="customer_id",
@@ -613,3 +619,49 @@ if uploaded_files:
         file_name="prodintel_executive_summary.csv",
         mime="text/csv",
     )
+
+
+st.divider()
+st.subheader("Portfolio Risk Trends")
+
+history_file = Path("data/portfolio_history/portfolio_trend_history.csv")
+
+if history_file.exists():
+    history_df = pd.read_csv(history_file)
+
+    history_df["analysis_timestamp"] = pd.to_datetime(
+        history_df["analysis_timestamp"],
+        errors="coerce",
+    )
+
+    history_df = history_df.dropna(subset=["analysis_timestamp"]).sort_values(
+        "analysis_timestamp"
+    )
+
+    if not history_df.empty:
+        st.line_chart(
+            history_df.set_index("analysis_timestamp")[
+                [
+                    "high_risk",
+                    "moderate_risk",
+                    "low_risk",
+                ]
+            ]
+        )
+
+        st.dataframe(
+            history_df,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        st.download_button(
+            "Download Portfolio Trend History",
+            data=history_df.to_csv(index=False),
+            file_name="prodintel_portfolio_trends.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("No valid portfolio history is available yet.")
+else:
+    st.info("Run a successful portfolio analysis to start building trend history.")
