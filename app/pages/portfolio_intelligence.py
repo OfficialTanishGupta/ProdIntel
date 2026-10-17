@@ -1,5 +1,4 @@
 import os
-
 import pandas as pd
 import requests
 import streamlit as st
@@ -71,12 +70,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     try:
         dataframes = [pd.read_csv(file) for file in uploaded_files]
-
-        customers_df = pd.concat(
-            dataframes,
-            ignore_index=True,
-        )
-
+        customers_df = pd.concat(dataframes, ignore_index=True)
     except Exception as exc:
         st.error(f"Could not read CSV files: {exc}")
         st.stop()
@@ -111,25 +105,21 @@ if uploaded_files:
 
     st.subheader("Customer Data Preview")
     st.dataframe(customers_df.head(10), use_container_width=True)
-
     st.write(f"**Customers loaded:** {len(customers_df):,}")
 
     if st.button("Analyze Customer Portfolio", type="primary"):
         payload_df = customers_df[REQUIRED_COLUMNS].copy()
         payload_df = payload_df.astype(object).where(pd.notna(payload_df), None)
-
-        payload = payload_df.to_dict(orient="records")
+        payload = [
+            {str(k): v for k, v in record.items()}
+            for record in payload_df.to_dict(orient="records")
+        ]
 
         with st.spinner("Analyzing customer portfolio..."):
             try:
-                response = requests.post(
-                    API_URL,
-                    json=payload,  # type: ignore[arg-type]
-                    timeout=120,
-                )
+                response = requests.post(API_URL, json=payload, timeout=120)
                 response.raise_for_status()
                 result = response.json()
-
             except requests.RequestException as exc:
                 st.error(f"Could not connect to the prediction API: {exc}")
                 st.stop()
@@ -139,14 +129,13 @@ if uploaded_files:
         if len(results_df) != len(customers_df):
             st.error("The API returned an unexpected number of results.")
             st.stop()
+
         st.session_state["portfolio_results"] = results_df.copy()
         st.session_state["portfolio_customers"] = customers_df.copy()
-
         st.session_state["portfolio_source"] = ", ".join(
             file.name for file in uploaded_files
         )
 
-        # Save a historical portfolio snapshot
         history_dir = Path("data/portfolio_history")
         history_dir.mkdir(parents=True, exist_ok=True)
 
@@ -166,474 +155,361 @@ if uploaded_files:
         )
 
         history_file = history_dir / "portfolio_trend_history.csv"
-
         if history_file.exists():
-            snapshot.to_csv(
-                history_file,
-                mode="a",
-                header=False,
-                index=False,
-            )
+            snapshot.to_csv(history_file, mode="a", header=False, index=False)
         else:
             snapshot.to_csv(history_file, index=False)
 
-        if "portfolio_results" in st.session_state and uploaded_files:
-            results_df = st.session_state["portfolio_results"].copy()
-            customers_df = st.session_state["portfolio_customers"].copy()
+    if (
+        "portfolio_results" in st.session_state
+        and "portfolio_customers" in st.session_state
+    ):
+        results_df = st.session_state["portfolio_results"].copy()
+        customers_df = st.session_state["portfolio_customers"].copy()
 
-            st.divider()
-            st.subheader("Portfolio Risk Overview")
+        st.divider()
+        st.subheader("Portfolio Risk Overview")
 
-            total = len(results_df)
-            high = int((results_df["risk_band"] == "High").sum())
-            moderate = int((results_df["risk_band"] == "Moderate").sum())
-            low = int((results_df["risk_band"] == "Low").sum())
+        total = len(results_df)
+        high = int((results_df["risk_band"] == "High").sum())
+        moderate = int((results_df["risk_band"] == "Moderate").sum())
+        low = int((results_df["risk_band"] == "Low").sum())
 
-            col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Customers", f"{total:,}")
+        col2.metric("High Risk", f"{high:,}")
+        col3.metric("Moderate Risk", f"{moderate:,}")
+        col4.metric("Low Risk", f"{low:,}")
 
-            col1.metric("Total Customers", f"{total:,}")
-            col2.metric("High Risk", f"{high:,}")
-            col3.metric("Moderate Risk", f"{moderate:,}")
-            col4.metric("Low Risk", f"{low:,}")
+        st.subheader("Business Impact Metrics")
 
-            st.subheader("Business Impact Metrics")
-
-    # Match each prediction to its original customer record.
-    customers_df = st.session_state.get(
-        "portfolio_customers",
-        customers_df,
-    ).copy()
-    business_df = customers_df[["customer_id", "monthly_charges"]].merge(
-        results_df[["customer_id", "churn_probability", "risk_band"]],
-        on="customer_id",
-        how="inner",
-        validate="one_to_one",
-    )
-
-    total_customers = len(business_df)
-
-    predicted_churn_count = int((business_df["churn_probability"] >= 0.5).sum())
-
-    overall_churn_rate = (
-        predicted_churn_count / total_customers * 100 if total_customers else 0
-    )
-
-    high_risk_df = business_df[business_df["risk_band"] == "High"]
-
-    monthly_revenue_at_risk = high_risk_df["monthly_charges"].sum()
-
-    average_probability = (
-        business_df["churn_probability"].mean() * 100 if total_customers else 0
-    )
-
-    st.subheader("Customer Segmentation Insights")
-
-    segmentation_df = customers_df.merge(
-        results_df[["customer_id", "risk_band"]],
-        on="customer_id",
-        how="inner",
-        validate="one_to_one",
-    )
-
-    high_risk_customers = segmentation_df[segmentation_df["risk_band"] == "High"].copy()
-
-    if high_risk_customers.empty:
-        st.info("No high-risk customers were identified in this portfolio.")
-    else:
-        # Group customer tenure.
-        high_risk_customers["tenure_group"] = pd.cut(
-            high_risk_customers["tenure_months"],
-            bins=[-1, 12, 24, float("inf")],
-            labels=["0–12 months", "13–24 months", "25+ months"],
-        )
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("**Contract Type**")
-            st.bar_chart(
-                high_risk_customers["contract"].value_counts(),
-                horizontal=True,
-                height=220,
-            )
-
-        with col2:
-            st.markdown("**Customer Tenure**")
-            st.bar_chart(
-                high_risk_customers["tenure_group"]
-                .value_counts()
-                .reindex(
-                    ["0–12 months", "13–24 months", "25+ months"],
-                    fill_value=0,
-                ),
-                horizontal=True,
-                height=220,
-            )
-
-        with col3:
-            st.markdown("**Internet Service**")
-            st.bar_chart(
-                high_risk_customers["internet_service"].value_counts(),
-                horizontal=True,
-                height=220,
-            )
-
-        st.caption(
-            "These charts describe the uploaded high-risk segment. "
-            "They show associations in this portfolio, not proof "
-            "that a particular characteristic causes churn."
-        )
-
-    metric1, metric2, metric3 = st.columns(3)
-
-    metric1.metric(
-        "Predicted Churn Rate",
-        f"{overall_churn_rate:.1f}%",
-        help="Share of customers with a predicted churn probability of at least 50%.",
-    )
-
-    metric2.metric(
-        "Monthly Charges at High Risk",
-        f"{monthly_revenue_at_risk:,.2f}",
-        help="Sum of monthly charges for customers classified as High Risk. This is not confirmed revenue loss.",
-    )
-
-    metric3.metric(
-        "Average Churn Probability",
-        f"{average_probability:.1f}%",
-        help="Mean predicted churn probability across all uploaded customers.",
-    )
-
-    st.subheader("Risk Distribution")
-
-    distribution = pd.DataFrame(
-        {
-            "Risk Level": ["High", "Moderate", "Low"],
-            "Customers": [high, moderate, low],
-        }
-    )
-
-    st.bar_chart(
-        distribution.set_index("Risk Level"),
-        horizontal=True,
-        height=220,
-    )
-
-    st.subheader("Customer Risk Results")
-
-    st.subheader("Retention Priorities")
-
-    priority_df = results_df.copy()
-
-    priority_df["churn_probability_pct"] = (
-        priority_df["churn_probability"] * 100
-    ).round(2)
-
-    priority_df["retention_priority"] = priority_df["risk_band"].map(
-        {
-            "High": 1,
-            "Moderate": 2,
-            "Low": 3,
-        }
-    )
-
-    priority_df = priority_df.sort_values(
-        ["retention_priority", "churn_probability"],
-        ascending=[True, False],
-    )
-
-    high_risk_df = priority_df[priority_df["risk_band"] == "High"].copy()
-
-    # Customer-specific retention recommendations
-    st.subheader("Recommended Retention Actions")
-
-    def recommend_retention_actions(customer):
-        actions = []
-
-        if str(customer.get("contract", "")).strip().lower() == "month-to-month":
-            actions.append("Offer an incentive to switch to a longer-term contract.")
-
-        try:
-            if float(customer.get("tenure_months", 0)) < 12:
-                actions.append("Provide onboarding support and a proactive check-in.")
-        except (TypeError, ValueError):
-            pass
-
-        if str(customer.get("tech_support", "")).strip().lower() == "no":
-            actions.append("Review eligibility for a technical-support offer.")
-
-        if str(customer.get("online_security", "")).strip().lower() == "no":
-            actions.append("Explain available online-security options.")
-
-        if "electronic check" in str(customer.get("payment_method", "")).lower():
-            actions.append("Encourage convenient automatic payment options.")
-
-        if not actions:
-            actions.append("Arrange proactive customer outreach and review feedback.")
-
-        return " ".join(actions)
-
-    if high_risk_df.empty:
-        st.info("No high-risk customers currently require targeted actions.")
-    else:
-        # Use the original uploaded customer data and match by customer ID.
-        recommendation_df = customers_df.merge(
-            high_risk_df[["customer_id", "churn_probability", "risk_band"]],
+        business_df = customers_df[["customer_id", "monthly_charges"]].merge(
+            results_df[["customer_id", "churn_probability", "risk_band"]],
             on="customer_id",
             how="inner",
+            validate="one_to_one",
         )
 
-        recommendation_df["Recommended Actions"] = recommendation_df.apply(
-            recommend_retention_actions,
-            axis=1,
+        total_customers = len(business_df)
+        predicted_churn_count = int((business_df["churn_probability"] >= 0.5).sum())
+        overall_churn_rate = (
+            predicted_churn_count / total_customers * 100 if total_customers else 0
         )
-
-        # Calculate a 0–100 retention priority score.
-        recommendation_df["Priority Score"] = (
-            recommendation_df["churn_probability"] * 100
-        ).round(1)
-
-        # Assign the next recommended business action.
-        def get_next_action(customer):
-            actions = str(customer.get("Recommended Actions", ""))
-
-            if "longer-term contract" in actions:
-                return "Contact customer about contract options"
-
-            if "onboarding support" in actions:
-                return "Schedule proactive customer check-in"
-
-            if "technical-support offer" in actions:
-                return "Review technical-support offer"
-
-            if "online-security options" in actions:
-                return "Discuss online-security options"
-
-            if "automatic payment options" in actions:
-                return "Discuss automatic payment options"
-
-            return "Arrange proactive retention outreach"
-
-        recommendation_df["Suggested Next Step"] = recommendation_df.apply(
-            get_next_action,
-            axis=1,
-        )
-
-        # Retention strategy insights
-        st.subheader("Retention Strategy Insights")
-
-        contract_risk = (
-            recommendation_df["contract"]
-            .astype(str)
-            .str.lower()
-            .eq("month-to-month")
-            .sum()
-        )
-
-        short_tenure_risk = (
-            pd.to_numeric(
-                recommendation_df["tenure_months"],
-                errors="coerce",
-            )
-            .lt(12)
-            .sum()
-        )
-
-        service_support_risk = (
-            recommendation_df["tech_support"].astype(str).str.lower().eq("no").sum()
+        high_risk_df = business_df[business_df["risk_band"] == "High"]
+        monthly_revenue_at_risk = high_risk_df["monthly_charges"].sum()
+        average_probability = (
+            business_df["churn_probability"].mean() * 100 if total_customers else 0
         )
 
         metric1, metric2, metric3 = st.columns(3)
-
         metric1.metric(
-            "Month-to-Month Customers",
-            int(contract_risk),
+            "Predicted Churn Rate",
+            f"{overall_churn_rate:.1f}%",
+            help="Share of customers with a predicted churn probability of at least 50%.",
         )
-
         metric2.metric(
-            "Customers Under 12 Months",
-            int(short_tenure_risk),
+            "Monthly Charges at High Risk",
+            f"{monthly_revenue_at_risk:,.2f}",
+            help="Sum of monthly charges for customers classified as High Risk.",
         )
-
         metric3.metric(
-            "Customers Without Tech Support",
-            int(service_support_risk),
+            "Average Churn Probability",
+            f"{average_probability:.1f}%",
+            help="Mean predicted churn probability across all uploaded customers.",
         )
 
-        st.caption(
-            "These counts describe the high-risk customers in the analyzed portfolio. "
-            "They indicate potential retention opportunities, not proven causes of churn."
+        st.subheader("Risk Distribution")
+        distribution = pd.DataFrame(
+            {
+                "Risk Level": ["High", "Moderate", "Low"],
+                "Customers": [high, moderate, low],
+            }
+        )
+        st.bar_chart(distribution.set_index("Risk Level"), horizontal=True, height=220)
+
+        st.subheader("Customer Segmentation Insights")
+        segmentation_df = customers_df.merge(
+            results_df[["customer_id", "risk_band"]],
+            on="customer_id",
+            how="inner",
+            validate="one_to_one",
         )
 
-        # Adding recommendation feature
-        display_df = recommendation_df[
-            [
-                "customer_id",
-                "churn_probability",
-                "Priority Score",
-                "Suggested Next Step",
-                "Recommended Actions",
-            ]
+        high_risk_customers = segmentation_df[
+            segmentation_df["risk_band"] == "High"
         ].copy()
 
-        display_df["churn_probability"] = (display_df["churn_probability"] * 100).round(
-            2
-        ).astype(str) + "%"
+        if high_risk_customers.empty:
+            st.info("No high-risk customers were identified in this portfolio.")
+        else:
+            high_risk_customers["tenure_group"] = pd.cut(
+                high_risk_customers["tenure_months"],
+                bins=[-1, 12, 24, float("inf")],
+                labels=["0–12 months", "13–24 months", "25+ months"],
+            )
 
-        st.dataframe(
-            display_df.sort_values(
-                "Priority Score",
-                ascending=False,
-            ),
-            hide_index=True,
-            use_container_width=True,
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("**Contract Type**")
+                st.bar_chart(
+                    high_risk_customers["contract"].value_counts(),
+                    horizontal=True,
+                    height=220,
+                )
+            with c2:
+                st.markdown("**Customer Tenure**")
+                st.bar_chart(
+                    high_risk_customers["tenure_group"]
+                    .value_counts()
+                    .reindex(
+                        ["0–12 months", "13–24 months", "25+ months"], fill_value=0
+                    ),
+                    horizontal=True,
+                    height=220,
+                )
+            with c3:
+                st.markdown("**Internet Service**")
+                st.bar_chart(
+                    high_risk_customers["internet_service"].value_counts(),
+                    horizontal=True,
+                    height=220,
+                )
+
+            st.caption(
+                "These charts describe the uploaded high-risk segment. "
+                "They show associations in this portfolio, not proof "
+                "that a particular characteristic causes churn."
+            )
+
+        st.subheader("Customer Risk Results")
+        priority_df = results_df.copy()
+        priority_df["churn_probability_pct"] = (
+            priority_df["churn_probability"] * 100
+        ).round(2)
+        priority_df["retention_priority"] = priority_df["risk_band"].map(
+            {"High": 1, "Moderate": 2, "Low": 3}
         )
+        priority_df = priority_df.sort_values(
+            ["retention_priority", "churn_probability"], ascending=[True, False]
+        )
+        high_risk_df = priority_df[priority_df["risk_band"] == "High"].copy()
 
-        st.download_button(
-            "Download Retention Action Plan",
-            data=recommendation_df[
+        st.subheader("Recommended Retention Actions")
+
+        def recommend_retention_actions(customer):
+            actions = []
+            if str(customer.get("contract", "")).strip().lower() == "month-to-month":
+                actions.append(
+                    "Offer an incentive to switch to a longer-term contract."
+                )
+            try:
+                if float(customer.get("tenure_months", 0)) < 12:
+                    actions.append(
+                        "Provide onboarding support and a proactive check-in."
+                    )
+            except (TypeError, ValueError):
+                pass
+            if str(customer.get("tech_support", "")).strip().lower() == "no":
+                actions.append("Review eligibility for a technical-support offer.")
+            if str(customer.get("online_security", "")).strip().lower() == "no":
+                actions.append("Explain available online-security options.")
+            if "electronic check" in str(customer.get("payment_method", "")).lower():
+                actions.append("Encourage convenient automatic payment options.")
+            if not actions:
+                actions.append(
+                    "Arrange proactive customer outreach and review feedback."
+                )
+            return " ".join(actions)
+
+        if high_risk_df.empty:
+            st.info("No high-risk customers currently require targeted actions.")
+            st.success("No customers are currently classified as high risk.")
+        else:
+            st.warning(
+                f"{len(high_risk_df)} customer(s) need priority retention review."
+            )
+            recommendation_df = customers_df.merge(
+                high_risk_df[["customer_id", "churn_probability", "risk_band"]],
+                on="customer_id",
+                how="inner",
+            )
+            recommendation_df["Recommended Actions"] = recommendation_df.apply(
+                recommend_retention_actions, axis=1
+            )
+            recommendation_df["Priority Score"] = (
+                recommendation_df["churn_probability"] * 100
+            ).round(1)
+
+            def get_next_action(customer):
+                actions = str(customer.get("Recommended Actions", ""))
+                if "longer-term contract" in actions:
+                    return "Contact customer about contract options"
+                if "onboarding support" in actions:
+                    return "Schedule proactive customer check-in"
+                if "technical-support offer" in actions:
+                    return "Review technical-support offer"
+                if "online-security options" in actions:
+                    return "Discuss online-security options"
+                if "automatic payment options" in actions:
+                    return "Discuss automatic payment options"
+                return "Arrange proactive retention outreach"
+
+            recommendation_df["Suggested Next Step"] = recommendation_df.apply(
+                get_next_action, axis=1
+            )
+
+            st.subheader("Retention Strategy Insights")
+            contract_risk = (
+                recommendation_df["contract"]
+                .astype(str)
+                .str.lower()
+                .eq("month-to-month")
+                .sum()
+            )
+            short_tenure_risk = (
+                pd.to_numeric(recommendation_df["tenure_months"], errors="coerce")
+                .lt(12)
+                .sum()
+            )
+            service_support_risk = (
+                recommendation_df["tech_support"].astype(str).str.lower().eq("no").sum()
+            )
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Month-to-Month Customers", int(contract_risk))
+            m2.metric("Customers Under 12 Months", int(short_tenure_risk))
+            m3.metric("Customers Without Tech Support", int(service_support_risk))
+
+            st.caption(
+                "These counts describe the high-risk customers in the analyzed portfolio. "
+                "They indicate potential retention opportunities, not proven causes of churn."
+            )
+
+            display_df = recommendation_df[
                 [
                     "customer_id",
-                    "risk_band",
                     "churn_probability",
                     "Priority Score",
                     "Suggested Next Step",
                     "Recommended Actions",
                 ]
-            ].to_csv(index=False),
-            file_name="prodintel_retention_action_plan.csv",
-            mime="text/csv",
+            ].copy()
+            display_df["churn_probability"] = (
+                display_df["churn_probability"] * 100
+            ).round(2).astype(str) + "%"
+
+            st.dataframe(
+                display_df.sort_values("Priority Score", ascending=False),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            st.download_button(
+                "Download Retention Action Plan",
+                data=recommendation_df[
+                    [
+                        "customer_id",
+                        "risk_band",
+                        "churn_probability",
+                        "Priority Score",
+                        "Suggested Next Step",
+                        "Recommended Actions",
+                    ]
+                ].to_csv(index=False),
+                file_name="prodintel_retention_action_plan.csv",
+                mime="text/csv",
+            )
+
+            st.dataframe(
+                high_risk_df[
+                    ["customer_id", "prediction", "churn_probability_pct", "risk_band"]
+                ].rename(
+                    columns={
+                        "customer_id": "Customer ID",
+                        "prediction": "Predicted Churn",
+                        "churn_probability_pct": "Churn Probability (%)",
+                        "risk_band": "Risk Level",
+                    }
+                ),
+                use_container_width=True,
+            )
+
+            st.download_button(
+                "Download High-Risk Customer Report",
+                data=high_risk_df.to_csv(index=False),
+                file_name="prodintel_high_risk_customers.csv",
+                mime="text/csv",
+            )
+
+        st.caption(
+            "Priorities are based on model-estimated churn probability. "
+            "They are decision-support signals, not guaranteed outcomes."
         )
 
-    if high_risk_df.empty:
-        st.success("No customers are currently classified as high risk.")
-    else:
-        st.warning(f"{len(high_risk_df)} customer(s) need priority retention review.")
+        display_results_df = results_df.copy()
+        display_results_df["churn_probability"] = (
+            display_results_df["churn_probability"] * 100
+        ).round(2)
+        display_results_df = display_results_df.rename(
+            columns={
+                "customer_id": "Customer ID",
+                "prediction": "Predicted Churn",
+                "churn_probability": "Churn Probability (%)",
+                "risk_band": "Risk Level",
+            }
+        ).sort_values("Churn Probability (%)", ascending=False)
 
-        st.dataframe(
-            high_risk_df[
-                [
-                    "customer_id",
-                    "prediction",
-                    "churn_probability_pct",
-                    "risk_band",
-                ]
-            ].rename(
-                columns={
-                    "customer_id": "Customer ID",
-                    "prediction": "Predicted Churn",
-                    "churn_probability_pct": "Churn Probability (%)",
-                    "risk_band": "Risk Level",
-                }
-            ),
-            use_container_width=True,
-        )
+        st.dataframe(display_results_df, use_container_width=True)
 
         st.download_button(
-            "Download High-Risk Customer Report",
-            data=high_risk_df.to_csv(index=False),
-            file_name="prodintel_high_risk_customers.csv",
+            "Download Prediction Results",
+            data=display_results_df.to_csv(index=False),
+            file_name="prodintel_portfolio_predictions.csv",
             mime="text/csv",
         )
 
-    st.caption(
-        "Priorities are based on model-estimated churn probability. "
-        "They are decision-support signals, not guaranteed outcomes."
-    )
+        st.divider()
+        st.subheader("Executive Portfolio Summary")
 
-    results_df["churn_probability"] = (results_df["churn_probability"] * 100).round(2)
+        summary_df = pd.DataFrame(
+            [
+                {"Metric": "Total Customers Analyzed", "Value": total},
+                {"Metric": "High-Risk Customers", "Value": high},
+                {"Metric": "Moderate-Risk Customers", "Value": moderate},
+                {"Metric": "Low-Risk Customers", "Value": low},
+                {
+                    "Metric": "Predicted Churn Rate (%)",
+                    "Value": round(overall_churn_rate, 2),
+                },
+                {
+                    "Metric": "Average Churn Probability (%)",
+                    "Value": round(average_probability, 2),
+                },
+                {
+                    "Metric": "Monthly Charges Associated with High-Risk Customers",
+                    "Value": round(float(monthly_revenue_at_risk), 2),
+                },
+            ]
+        )
 
-    results_df = results_df.rename(
-        columns={
-            "customer_id": "Customer ID",
-            "prediction": "Predicted Churn",
-            "churn_probability": "Churn Probability (%)",
-            "risk_band": "Risk Level",
-        }
-    )
+        st.dataframe(summary_df, hide_index=True, use_container_width=True)
 
-    results_df = results_df.sort_values(
-        "Churn Probability (%)",
-        ascending=False,
-    )
-
-    st.dataframe(results_df, use_container_width=True)
-
-    st.download_button(
-        "Download Prediction Results",
-        data=results_df.to_csv(index=False),
-        file_name="prodintel_portfolio_predictions.csv",
-        mime="text/csv",
-    )
-
-    st.caption(
-        "Predictions estimate churn risk; they do not guarantee "
-        "that a customer will leave."
-    )
-
-    st.divider()
-    st.subheader("Executive Portfolio Summary")
-
-    summary_df = pd.DataFrame(
-        [
-            {
-                "Metric": "Total Customers Analyzed",
-                "Value": total,
-            },
-            {
-                "Metric": "High-Risk Customers",
-                "Value": high,
-            },
-            {
-                "Metric": "Moderate-Risk Customers",
-                "Value": moderate,
-            },
-            {
-                "Metric": "Low-Risk Customers",
-                "Value": low,
-            },
-            {
-                "Metric": "Predicted Churn Rate (%)",
-                "Value": round(overall_churn_rate, 2),
-            },
-            {
-                "Metric": "Average Churn Probability (%)",
-                "Value": round(average_probability, 2),
-            },
-            {
-                "Metric": "Monthly Charges Associated with High-Risk Customers",
-                "Value": round(float(monthly_revenue_at_risk), 2),
-            },
-        ]
-    )
-
-    st.dataframe(
-        summary_df,
-        hide_index=True,
-        use_container_width=True,
-    )
-
-    st.download_button(
-        "Download Executive Summary",
-        data=summary_df.to_csv(index=False),
-        file_name="prodintel_executive_summary.csv",
-        mime="text/csv",
-    )
-
+        st.download_button(
+            "Download Executive Summary",
+            data=summary_df.to_csv(index=False),
+            file_name="prodintel_executive_summary.csv",
+            mime="text/csv",
+        )
 
 st.divider()
 st.subheader("Portfolio Risk Trends")
-
 history_file = Path("data/portfolio_history/portfolio_trend_history.csv")
 
 if history_file.exists():
     history_df = pd.read_csv(history_file)
-
     history_df["analysis_timestamp"] = pd.to_datetime(
-        history_df["analysis_timestamp"],
-        errors="coerce",
+        history_df["analysis_timestamp"], errors="coerce"
     )
-
     history_df = history_df.dropna(subset=["analysis_timestamp"]).sort_values(
         "analysis_timestamp"
     )
@@ -641,20 +517,10 @@ if history_file.exists():
     if not history_df.empty:
         st.line_chart(
             history_df.set_index("analysis_timestamp")[
-                [
-                    "high_risk",
-                    "moderate_risk",
-                    "low_risk",
-                ]
+                ["high_risk", "moderate_risk", "low_risk"]
             ]
         )
-
-        st.dataframe(
-            history_df,
-            hide_index=True,
-            use_container_width=True,
-        )
-
+        st.dataframe(history_df, hide_index=True, use_container_width=True)
         st.download_button(
             "Download Portfolio Trend History",
             data=history_df.to_csv(index=False),
