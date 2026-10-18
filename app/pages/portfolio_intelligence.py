@@ -501,33 +501,214 @@ if uploaded_files:
             mime="text/csv",
         )
 
+
 st.divider()
 st.subheader("Portfolio Risk Trends")
+
 history_file = Path("data/portfolio_history/portfolio_trend_history.csv")
 
 if history_file.exists():
     history_df = pd.read_csv(history_file)
+
     history_df["analysis_timestamp"] = pd.to_datetime(
-        history_df["analysis_timestamp"], errors="coerce"
+        history_df["analysis_timestamp"],
+        errors="coerce",
     )
-    history_df = history_df.dropna(subset=["analysis_timestamp"]).sort_values(
-        "analysis_timestamp"
+
+    history_df = (
+        history_df.dropna(subset=["analysis_timestamp"])
+        .sort_values("analysis_timestamp")
+        .reset_index(drop=True)
     )
 
     if not history_df.empty:
-        st.line_chart(
-            history_df.set_index("analysis_timestamp")[
-                ["high_risk", "moderate_risk", "low_risk"]
-            ]
-        )
-        st.dataframe(history_df, hide_index=True, use_container_width=True)
-        st.download_button(
-            "Download Portfolio Trend History",
-            data=history_df.to_csv(index=False),
-            file_name="prodintel_portfolio_trends.csv",
-            mime="text/csv",
-        )
+        required_columns = [
+            "total_customers",
+            "high_risk",
+            "moderate_risk",
+            "low_risk",
+            "average_churn_probability_pct",
+        ]
+
+        missing_columns = [
+            column for column in required_columns if column not in history_df.columns
+        ]
+
+        if missing_columns:
+            st.error(
+                "Portfolio history is missing required columns: "
+                + ", ".join(missing_columns)
+            )
+        else:
+            latest = history_df.iloc[-1]
+            previous = history_df.iloc[-2] if len(history_df) > 1 else None
+
+            latest_timestamp = latest["analysis_timestamp"]
+            latest_timestamp_text = latest_timestamp.strftime("%d %b %Y, %I:%M:%S %p")
+
+            st.caption(
+                "Historical comparisons use consecutive analysis snapshots. "
+                "Customer populations may differ between analyses."
+            )
+
+            # Analysis metadata
+            st.markdown("#### Analysis Overview")
+
+            meta1, meta2 = st.columns(2)
+
+            with meta1:
+                st.metric(
+                    "Recorded Analyses",
+                    f"{len(history_df):,}",
+                )
+
+            with meta2:
+                st.metric(
+                    "Latest Analysis",
+                    latest_timestamp_text,
+                )
+
+            # Latest portfolio metrics
+            st.markdown("#### Latest Portfolio Snapshot")
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            col1.metric(
+                "Total Customers",
+                f"{int(latest['total_customers']):,}",
+            )
+
+            col2.metric(
+                "High Risk",
+                f"{int(latest['high_risk']):,}",
+            )
+
+            col3.metric(
+                "Moderate Risk",
+                f"{int(latest['moderate_risk']):,}",
+            )
+
+            col4.metric(
+                "Low Risk",
+                f"{int(latest['low_risk']):,}",
+            )
+
+            col5.metric(
+                "Average Churn Probability",
+                f"{latest['average_churn_probability_pct']:.2f}%",
+            )
+
+            # Compare the latest snapshot with the previous one
+            if previous is not None:
+                st.markdown("#### Change Since Previous Analysis")
+
+                risk1, risk2, risk3, risk4 = st.columns(4)
+
+                high_delta = int(latest["high_risk"] - previous["high_risk"])
+                moderate_delta = int(
+                    latest["moderate_risk"] - previous["moderate_risk"]
+                )
+                low_delta = int(latest["low_risk"] - previous["low_risk"])
+                customer_delta = int(
+                    latest["total_customers"] - previous["total_customers"]
+                )
+
+                probability_delta = (
+                    latest["average_churn_probability_pct"]
+                    - previous["average_churn_probability_pct"]
+                )
+
+                risk1.metric(
+                    "High-Risk Count Change",
+                    f"{high_delta:+d}",
+                    delta_color="off",
+                )
+
+                risk2.metric(
+                    "Moderate-Risk Count Change",
+                    f"{moderate_delta:+d}",
+                    delta_color="off",
+                )
+
+                risk3.metric(
+                    "Low-Risk Count Change",
+                    f"{low_delta:+d}",
+                    delta_color="off",
+                )
+
+                risk4.metric(
+                    "Customer Count Change",
+                    f"{customer_delta:+d}",
+                    delta_color="off",
+                )
+
+                st.metric(
+                    "Average Churn Probability Change",
+                    f"{probability_delta:+.2f} percentage points",
+                    delta_color="off",
+                )
+
+                st.caption(
+                    "Positive changes indicate increases; negative changes "
+                    "indicate decreases. These are differences between "
+                    "snapshots, not necessarily changes in the same customers."
+                )
+
+                # Business-friendly interpretation
+                if high_delta > 0:
+                    st.warning(
+                        f"High-risk customer count increased by "
+                        f"{high_delta}. Review the latest high-risk "
+                        "customer list and prioritize appropriate retention actions."
+                    )
+                elif high_delta < 0:
+                    st.info(
+                        f"High-risk customer count decreased by "
+                        f"{abs(high_delta)} compared with the previous analysis. "
+                        "Validate the customer populations before concluding "
+                        "that retention risk has improved."
+                    )
+                else:
+                    st.info(
+                        "High-risk customer count is unchanged "
+                        "from the previous analysis."
+                    )
+
+            else:
+                st.info(
+                    "A previous snapshot is needed to calculate historical "
+                    "changes. Comparisons will appear after another successful "
+                    "portfolio analysis."
+                )
+
+            # Historical risk chart
+            st.markdown("#### Risk Distribution Over Time")
+
+            st.line_chart(
+                history_df.set_index("analysis_timestamp")[
+                    ["high_risk", "moderate_risk", "low_risk"]
+                ]
+            )
+
+            # Full historical data
+            with st.expander("View Historical Analysis Records"):
+                st.dataframe(
+                    history_df,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            # Download does not append a history snapshot
+            st.download_button(
+                "Download Portfolio Trend History",
+                data=history_df.to_csv(index=False),
+                file_name="prodintel_portfolio_trends.csv",
+                mime="text/csv",
+                key="download_portfolio_trend_history",
+            )
+
     else:
         st.info("No valid portfolio history is available yet.")
+
 else:
     st.info("Run a successful portfolio analysis to start building trend history.")
