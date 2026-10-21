@@ -36,7 +36,6 @@ def health_check():
 
 @app.post("/predict")
 def predict_churn(customer: CustomerChurnRequest):
-
     customer_data = pd.DataFrame(
         [
             {
@@ -66,6 +65,17 @@ def predict_churn(customer: CustomerChurnRequest):
 
     prediction = model.predict(customer_data)[0]
     probability = model.predict_proba(customer_data)[0][1]
+
+    try:
+        explanation = explain_prediction(model, customer_data, top_n=5)
+    except Exception:
+        explanation = {"higher_risk": [], "lower_risk": []}
+
+    return {
+        "prediction": str(prediction),
+        "churn_probability": round(float(probability), 4),
+        "explanation": explanation,
+    }
 
 
 @app.post("/predict-batch")
