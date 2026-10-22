@@ -9,12 +9,28 @@ from typing import List
 from app.schemas import CustomerChurnRequest
 from app.explainability import explain_prediction
 
+from datetime import datetime
+
+from fastapi import Query
+from pydantic import BaseModel, Field
+
+from app.database import get_connection
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 MODEL_PATH = BASE_DIR / "models" / "customer_churn_model.joblib"
 
 
 model = joblib.load(MODEL_PATH)
+
+
+class PortfolioSnapshot(BaseModel):
+    analysis_timestamp: datetime
+    total_customers: int = Field(ge=0)
+    high_risk: int = Field(ge=0)
+    moderate_risk: int = Field(ge=0)
+    low_risk: int = Field(ge=0)
+    average_churn_probability_pct: float = Field(ge=0, le=100)
 
 
 app = FastAPI(
@@ -107,6 +123,96 @@ def predict_batch(customers: List[CustomerChurnRequest]):
             for customer in customers
         ]
     )
+
+
+@app.get("/portfolio-history")
+def get_portfolio_history(limit: int = Query(default=500, ge=1, le=5000)):
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    analysis_timestamp,
+                    total_customers,
+                    high_risk,
+                    moderate_risk,
+                    low_risk,
+                    average_churn_probability_pct
+                FROM portfolio_history
+                ORDER BY analysis_timestamp DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            history = cursor.fetchall()
+
+    return {
+        "total_snapshots": len(history),
+        "history": history,
+    }
+
+
+@app.post("/portfolio-history")
+def save_portfolio_snapshot(snapshot: PortfolioSnapshot):
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            # Avoid saving an identical snapshot twice.
+            cursor.execute(
+                """
+                SELECT id
+                FROM portfolio_history
+                WHERE analysis_timestamp = %s
+                  AND total_customers = %s
+                  AND high_risk = %s
+                  AND moderate_risk = %s
+                  AND low_risk = %s
+                  AND average_churn_probability_pct = %s
+                LIMIT 1
+                """,
+                (
+                    snapshot.analysis_timestamp,
+                    snapshot.total_customers,
+                    snapshot.high_risk,
+                    snapshot.moderate_risk,
+                    snapshot.low_risk,
+                    snapshot.average_churn_probability_pct,
+                ),
+            )
+
+            existing = cursor.fetchone()
+
+            if existing:
+                return {
+                    "message": "Snapshot already exists",
+                    "saved": False,
+                }
+
+            cursor.execute(
+                """
+                INSERT INTO portfolio_history (
+                    analysis_timestamp,
+                    total_customers,
+                    high_risk,
+                    moderate_risk,
+                    low_risk,
+                    average_churn_probability_pct
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    snapshot.analysis_timestamp,
+                    snapshot.total_customers,
+                    snapshot.high_risk,
+                    snapshot.moderate_risk,
+                    snapshot.low_risk,
+                    snapshot.average_churn_probability_pct,
+                ),
+            )
+
+    return {
+        "message": "Portfolio snapshot saved successfully",
+        "saved": True,
+    }
 
     predictions = model.predict(customer_data)
     probabilities = model.predict_proba(customer_data)[:, 1]
