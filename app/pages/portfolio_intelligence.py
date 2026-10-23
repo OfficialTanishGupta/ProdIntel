@@ -5,13 +5,14 @@ import streamlit as st
 from datetime import datetime
 from pathlib import Path
 
-API_URL = (
-    os.getenv(
-        "PRODINTEL_API_URL",
-        "http://127.0.0.1:8000",
-    ).rstrip("/")
-    + "/predict-batch"
-)
+API_BASE_URL = os.getenv(
+    "PRODINTEL_API_URL",
+    "http://127.0.0.1:8000",
+).rstrip("/")
+
+PREDICT_BATCH_URL = f"{API_BASE_URL}/predict-batch"
+PORTFOLIO_HISTORY_URL = f"{API_BASE_URL}/portfolio-history"
+
 
 st.set_page_config(
     page_title="ProdIntel - Portfolio Intelligence",
@@ -45,6 +46,31 @@ REQUIRED_COLUMNS = [
     "paperless_billing",
     "payment_method",
 ]
+
+
+def load_portfolio_history():
+    """Load historical portfolio snapshots from the backend."""
+    response = requests.get(
+        PORTFOLIO_HISTORY_URL,
+        params={"limit": 5000},
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    history = response.json().get("history", [])
+    return pd.DataFrame(history)
+
+
+def save_portfolio_snapshot(snapshot):
+    """Save a portfolio snapshot through the backend API."""
+    response = requests.post(
+        PORTFOLIO_HISTORY_URL,
+        json=snapshot,
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
 
 st.info(
     "Upload a CSV containing the required customer columns. "
@@ -117,7 +143,11 @@ if uploaded_files:
 
         with st.spinner("Analyzing customer portfolio..."):
             try:
-                response = requests.post(API_URL, json=payload, timeout=120)
+                response = requests.post(
+                    PREDICT_BATCH_URL,
+                    json=payload,
+                    timeout=120,
+                )
                 response.raise_for_status()
                 result = response.json()
             except requests.RequestException as exc:
@@ -139,26 +169,32 @@ if uploaded_files:
         history_dir = Path("data/portfolio_history")
         history_dir.mkdir(parents=True, exist_ok=True)
 
-        snapshot = pd.DataFrame(
-            [
-                {
-                    "analysis_timestamp": datetime.now().isoformat(timespec="seconds"),
-                    "total_customers": len(results_df),
-                    "high_risk": int((results_df["risk_band"] == "High").sum()),
-                    "moderate_risk": int((results_df["risk_band"] == "Moderate").sum()),
-                    "low_risk": int((results_df["risk_band"] == "Low").sum()),
-                    "average_churn_probability_pct": round(
-                        results_df["churn_probability"].mean() * 100, 2
-                    ),
-                }
-            ]
-        )
+        snapshot = {
+            "analysis_timestamp": datetime.now()
+            .astimezone()
+            .isoformat(timespec="seconds"),
+            "total_customers": len(results_df),
+            "high_risk": int((results_df["risk_band"] == "High").sum()),
+            "moderate_risk": int((results_df["risk_band"] == "Moderate").sum()),
+            "low_risk": int((results_df["risk_band"] == "Low").sum()),
+            "average_churn_probability_pct": round(
+                results_df["churn_probability"].mean() * 100, 2
+            ),
+        }
 
-        history_file = history_dir / "portfolio_trend_history.csv"
-        if history_file.exists():
-            snapshot.to_csv(history_file, mode="a", header=False, index=False)
-        else:
-            snapshot.to_csv(history_file, index=False)
+        try:
+            save_result = save_portfolio_snapshot(snapshot)
+
+            if save_result.get("saved"):
+                st.success("Portfolio snapshot saved to PostgreSQL.")
+            else:
+                st.info("This portfolio snapshot already exists in PostgreSQL.")
+
+        except requests.RequestException as exc:
+            st.warning(
+                "Predictions completed, but the historical snapshot could not "
+                f"be saved to PostgreSQL: {exc}"
+            )
 
     if (
         "portfolio_results" in st.session_state
@@ -505,11 +541,14 @@ if uploaded_files:
 st.divider()
 st.subheader("Portfolio Risk Trends")
 
-history_file = Path("data/portfolio_history/portfolio_trend_history.csv")
+try:
+    history_df = load_portfolio_history()
 
-if history_file.exists():
-    history_df = pd.read_csv(history_file)
+except requests.RequestException as exc:
+    st.error(f"Could not load portfolio history from the API: {exc}")
+    history_df = pd.DataFrame()
 
+if not history_df.empty:
     history_df["analysis_timestamp"] = pd.to_datetime(
         history_df["analysis_timestamp"],
         errors="coerce",
