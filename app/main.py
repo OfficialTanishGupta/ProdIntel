@@ -14,6 +14,7 @@ from datetime import datetime
 from fastapi import Query
 from pydantic import BaseModel, Field
 
+
 from app.database import get_connection
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -96,6 +97,9 @@ def predict_churn(customer: CustomerChurnRequest):
 
 @app.post("/predict-batch")
 def predict_batch(customers: List[CustomerChurnRequest]):
+    if not customers:
+        return {"total_customers": 0, "results": []}
+
     customer_data = pd.DataFrame(
         [
             {
@@ -124,6 +128,35 @@ def predict_batch(customers: List[CustomerChurnRequest]):
         ]
     )
 
+    predictions = model.predict(customer_data)
+    probabilities = model.predict_proba(customer_data)[:, 1]
+
+    results = []
+
+    for customer, prediction, probability in zip(customers, predictions, probabilities):
+        probability = float(probability)
+
+        if probability < 0.30:
+            risk_band = "Low"
+        elif probability < 0.60:
+            risk_band = "Moderate"
+        else:
+            risk_band = "High"
+
+        results.append(
+            {
+                "customer_id": customer.customer_id,
+                "prediction": str(prediction),
+                "churn_probability": round(probability, 4),
+                "risk_band": risk_band,
+            }
+        )
+
+    return {
+        "total_customers": len(results),
+        "results": results,
+    }
+
 
 @app.get("/portfolio-history")
 def get_portfolio_history(limit: int = Query(default=500, ge=1, le=5000)):
@@ -149,104 +182,4 @@ def get_portfolio_history(limit: int = Query(default=500, ge=1, le=5000)):
     return {
         "total_snapshots": len(history),
         "history": history,
-    }
-
-
-@app.post("/portfolio-history")
-def save_portfolio_snapshot(snapshot: PortfolioSnapshot):
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            # Avoid saving an identical snapshot twice.
-            cursor.execute(
-                """
-                SELECT id
-                FROM portfolio_history
-                WHERE analysis_timestamp = %s
-                  AND total_customers = %s
-                  AND high_risk = %s
-                  AND moderate_risk = %s
-                  AND low_risk = %s
-                  AND average_churn_probability_pct = %s
-                LIMIT 1
-                """,
-                (
-                    snapshot.analysis_timestamp,
-                    snapshot.total_customers,
-                    snapshot.high_risk,
-                    snapshot.moderate_risk,
-                    snapshot.low_risk,
-                    snapshot.average_churn_probability_pct,
-                ),
-            )
-
-            existing = cursor.fetchone()
-
-            if existing:
-                return {
-                    "message": "Snapshot already exists",
-                    "saved": False,
-                }
-
-            cursor.execute(
-                """
-                INSERT INTO portfolio_history (
-                    analysis_timestamp,
-                    total_customers,
-                    high_risk,
-                    moderate_risk,
-                    low_risk,
-                    average_churn_probability_pct
-                )
-                VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    snapshot.analysis_timestamp,
-                    snapshot.total_customers,
-                    snapshot.high_risk,
-                    snapshot.moderate_risk,
-                    snapshot.low_risk,
-                    snapshot.average_churn_probability_pct,
-                ),
-            )
-
-    return {
-        "message": "Portfolio snapshot saved successfully",
-        "saved": True,
-    }
-
-    predictions = model.predict(customer_data)
-    probabilities = model.predict_proba(customer_data)[:, 1]
-
-    results = []
-
-    for customer, prediction, probability in zip(customers, predictions, probabilities):
-        probability = float(probability)
-
-        if probability < 0.30:
-            risk_band = "Low"
-        elif probability < 0.60:
-            risk_band = "Moderate"
-        else:
-            risk_band = "High"
-
-        results.append(
-            {
-                "customer_id": customer.customer_id,
-                "prediction": prediction,
-                "churn_probability": round(probability, 4),
-                "risk_band": risk_band,
-            }
-        )
-
-    return {"total_customers": len(results), "results": results}
-
-    try:
-        explanation = explain_prediction(model, customer_data, top_n=5)
-    except Exception:
-        explanation = {"higher_risk": [], "lower_risk": []}
-
-    return {
-        "prediction": prediction,
-        "churn_probability": round(float(probability), 4),
-        "explanation": explanation,
     }
