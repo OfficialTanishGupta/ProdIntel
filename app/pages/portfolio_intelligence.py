@@ -551,7 +551,9 @@ except requests.RequestException as exc:
 if not history_df.empty:
     history_df["analysis_timestamp"] = pd.to_datetime(
         history_df["analysis_timestamp"],
+        format="mixed",
         errors="coerce",
+        utc=True,
     )
 
     history_df = (
