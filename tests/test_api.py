@@ -109,3 +109,89 @@ def test_negative_numeric_value():
 
     assert response.status_code == 422
 
+
+def test_empty_batch_prediction():
+    response = client.post("/predict-batch", json=[])
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total_customers"] == 0
+    assert data["results"] == []
+
+
+def test_single_customer_batch_prediction():
+    response = client.post(
+        "/predict-batch",
+        json=[VALID_CUSTOMER],
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total_customers"] == 1
+    assert len(data["results"]) == 1
+
+    result = data["results"][0]
+
+    assert result["prediction"] in ["Yes", "No"]
+    assert 0 <= result["churn_probability"] <= 1
+    assert result["risk_band"] in ["Low", "Moderate", "High"]
+
+
+def test_multiple_customer_batch_prediction():
+    customers = [
+        VALID_CUSTOMER,
+        {
+            **VALID_CUSTOMER,
+            "tenure_months": 24,
+            "monthly_charges": 55.0,
+            "total_charges": 1320.0,
+        },
+        {
+            **VALID_CUSTOMER,
+            "tenure_months": 48,
+            "monthly_charges": 90.0,
+            "total_charges": 4320.0,
+        },
+    ]
+
+    response = client.post("/predict-batch", json=customers)
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total_customers"] == 3
+    assert len(data["results"]) == 3
+
+    for result in data["results"]:
+        assert result["prediction"] in ["Yes", "No"]
+        assert 0 <= result["churn_probability"] <= 1
+        assert result["risk_band"] in ["Low", "Moderate", "High"]
+
+
+def test_batch_prediction_invalid_customer():
+    invalid_customer = VALID_CUSTOMER.copy()
+    del invalid_customer["tenure_months"]
+
+    response = client.post(
+        "/predict-batch",
+        json=[invalid_customer],
+    )
+
+    assert response.status_code == 422
+
+
+def test_batch_prediction_invalid_data_type():
+    invalid_customer = VALID_CUSTOMER.copy()
+    invalid_customer["monthly_charges"] = "invalid"
+
+    response = client.post(
+        "/predict-batch",
+        json=[invalid_customer],
+    )
+
+    assert response.status_code == 422
