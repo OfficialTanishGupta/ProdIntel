@@ -1,6 +1,7 @@
 numpy
 pandas
-matplotlib
+matplotlib<3.11
+httpx2>=2.16,<3
 seaborn
 scikit-learn
 jupyter
