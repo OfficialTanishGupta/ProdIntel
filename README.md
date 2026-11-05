@@ -1,8 +1,45 @@
 # ProdIntel — Production Intelligence Platform
 
+[![ProdIntel CI](https://github.com/OfficialTanishGupta/ProdIntel/actions/workflows/tests.yml/badge.svg)](https://github.com/OfficialTanishGupta/ProdIntel/actions/workflows/tests.yml)
+
 ProdIntel is a machine-learning-powered business intelligence platform that helps organizations analyze operational and customer data, predict risks, and make better decisions.
 
-The current release delivers a complete **Customer Churn Intelligence** module: a FastAPI prediction backend, a Streamlit customer dashboard with SHAP explanations, and a **Portfolio Intelligence** page for batch analysis of up to 1,000 customers.
+The current release delivers a complete **Customer Churn Intelligence** module: a FastAPI prediction backend, a Streamlit customer dashboard with SHAP explanations, a **Portfolio Intelligence** page for batch analysis of up to 1,000 customers, PostgreSQL-backed portfolio history, an automated regression test suite, and GitHub Actions CI.
+
+## Current Status
+
+| Area                                   | Status                          |
+| -------------------------------------- | ------------------------------- |
+| Core ML application                    | Complete                        |
+| Deployment (Render)                    | Complete                        |
+| PostgreSQL integration                 | Complete                        |
+| Automated regression tests (21 passed) | Complete                        |
+| GitHub Actions CI                      | Complete                        |
+| **Code Quality & Reliability Review**  | **In progress (current phase)** |
+
+Latest verified checkpoint: 21 tests passing locally, CI run successful on `main`.
+
+## Current Phase — Code Quality & Reliability Review
+
+With the core application, deployment, database persistence, tests, and CI in place, the project is now focused on reliability. Work proceeds one step at a time, and every change is tested before moving forward.
+
+| Step | Task                                             | Status  |
+| ---- | ------------------------------------------------ | ------- |
+| 1    | Investigate and understand the 4 pytest warnings | Next    |
+| 2    | Review FastAPI endpoints and error handling      | Pending |
+| 3    | Review PostgreSQL reliability and persistence    | Pending |
+| 4    | Review frontend/backend integration              | Pending |
+| 5    | Identify missing regression tests                | Pending |
+| 6    | Implement and test improvements                  | Pending |
+
+**Immediate next task:** run `pytest -v -W default` from the project directory and identify all four warnings before changing any code.
+
+**Ground rules for this phase**
+
+- Existing working features must not break.
+- Production database records are not modified without explicit approval.
+- Commit and push after each completed milestone.
+- ProdIntel remains a separate project from the AutoML Platform.
 
 ## Live Demo
 
@@ -38,6 +75,7 @@ The current release delivers a complete **Customer Churn Intelligence** module: 
 - Retention strategy insights (month-to-month customers, short-tenure customers, customers without technical support)
 - Downloads: high-risk customer report, prediction results, retention action plan, executive portfolio summary
 - Portfolio risk trend history with chart, data table, and CSV download
+- **Persistent history:** snapshots are stored in PostgreSQL, with duplicate snapshot detection
 - Results stored in `st.session_state`, so downloads and reruns do not lose data or trigger duplicate predictions
 
 ## Risk Definitions
@@ -76,36 +114,43 @@ The current release delivers a complete **Customer Churn Intelligence** module: 
 │  - Customer page   │                     │  /  /health        │
 │  - Portfolio page  │ ◄────────────────── │  /predict          │
 └────────────────────┘   JSON predictions  │  /predict-batch    │
-                                           └─────────┬──────────┘
-                                                     │ joblib
-                                                     ▼
-                                           ┌────────────────────┐
-                                           │ Churn model (RF)   │
-                                           └────────────────────┘
+                                           │  portfolio history │
+                                           └───────┬─────┬──────┘
+                                         joblib    │     │  Psycopg 3
+                                                   ▼     ▼
+                                    ┌──────────────────┐ ┌──────────────────┐
+                                    │ Churn model (RF) │ │ PostgreSQL       │
+                                    └──────────────────┘ │ portfolio_history│
+                                                         └──────────────────┘
 ```
 
 ## API Endpoints
 
-| Method | Endpoint         | Description                              |
-| ------ | ---------------- | ---------------------------------------- |
-| GET    | `/`              | Root endpoint                            |
-| GET    | `/health`        | Health check                             |
-| POST   | `/predict`       | Single customer churn prediction         |
-| POST   | `/predict-batch` | Batch predictions for multiple customers |
+| Method     | Endpoint                    | Description                                 |
+| ---------- | --------------------------- | ------------------------------------------- |
+| GET        | `/`                         | Root endpoint                               |
+| GET        | `/health`                   | Health check                                |
+| POST       | `/predict`                  | Single customer churn prediction            |
+| POST       | `/predict-batch`            | Batch predictions for multiple customers    |
+| GET / POST | Portfolio history endpoints | Read and record portfolio history snapshots |
 
-Responses include the churn prediction, churn probability, and risk classification.
+Responses include the churn prediction, churn probability, and risk classification. See the Swagger docs for exact request/response schemas.
 
 ## Tech Stack
 
-Python · Pandas · NumPy · Scikit-learn · Matplotlib · Seaborn · Streamlit · FastAPI · Joblib · SHAP · Requests · Git/GitHub · Render
+Python · Pandas · NumPy · Scikit-learn · Matplotlib · Seaborn · Streamlit · FastAPI · PostgreSQL · Psycopg 3 · Joblib · SHAP · Requests · Pytest · GitHub Actions · Git/GitHub · Render
 
 ## Project Structure
 
 ```
 ProdIntel/
+├── .github/
+│   └── workflows/
+│       └── tests.yml                    # GitHub Actions CI
 ├── app/
 │   ├── main.py                          # FastAPI backend
 │   ├── schemas.py                       # Request/response schemas
+│   ├── database.py                      # PostgreSQL connection and history storage
 │   ├── customer_ui.py                   # Customer Intelligence frontend
 │   ├── explainability.py                # SHAP explanations
 │   └── pages/
@@ -116,7 +161,10 @@ ProdIntel/
 │   └── 11_customer_churn_final_model.ipynb
 ├── data/
 │   └── portfolio_history/
-│       └── portfolio_trend_history.csv
+│       └── portfolio_trend_history.csv  # Legacy history (migrated to PostgreSQL)
+├── tests/
+│   ├── test_database.py                 # Mocked database tests
+│   └── ...                              # API and batch prediction regression tests
 ├── requirements.txt
 └── README.md
 ```
@@ -144,6 +192,28 @@ streamlit run app/customer_ui.py
 
 By default the frontend should point to the deployed API. To use a local backend, update the API base URL in the frontend to `http://127.0.0.1:8000`.
 
+## Testing
+
+```powershell
+# Run the full test suite
+pytest -v
+
+# Show all warnings (used in the current reliability phase)
+pytest -v -W default
+```
+
+- The suite covers API endpoints, batch predictions, and database logic.
+- Database tests are mocked and do not require production database access.
+- Latest local result: `21 passed, 4 warnings`.
+
+## Continuous Integration
+
+GitHub Actions (`.github/workflows/tests.yml`) runs the test suite automatically:
+
+- On every push and pull request to `main`
+- On demand via manual workflow dispatch
+- Runner `ubuntu-24.04`, Python `3.12`, `actions/checkout@v7`, `actions/setup-python@v7`
+
 ## Using Portfolio Intelligence
 
 1. Open **Portfolio Intelligence** from the Streamlit sidebar.
@@ -160,19 +230,20 @@ Both services are deployed on Render:
 
 - Backend: FastAPI web service
 - Frontend: Streamlit web service
+- Database: PostgreSQL for portfolio history
 
 ## Known Limitations
 
-- **Trend history storage:** history is saved to a local CSV (`data/portfolio_history/portfolio_trend_history.csv`). Render's local filesystem may not persist across restarts or deployments, so persistent storage (e.g., a database) is needed for durable history.
 - Recommendations and predicted churn outcomes are decision-support signals, not guarantees.
 - Model metrics are from a single public dataset and may differ on real business data.
+- The test suite currently reports 4 warnings that are being investigated in the current phase.
 
 ## Roadmap
 
-- **Phase A — Stabilize:** regression test multi-file uploads, all downloads, and trend recording; confirm no duplicate snapshots
-- **Phase B — Historical analytics:** risk-count changes between analyses, latest analysis timestamp, trend comparisons, persistent storage
+- **Phase A — Stabilize:** ✅ regression tests for API, batch prediction, and database logic; CI in place
+- **Phase B — Historical analytics:** ✅ persistent PostgreSQL storage and duplicate snapshot detection; 🔜 risk-count changes between analyses, latest analysis timestamp, trend comparisons
 - **Phase C — Retention intelligence:** richer priority scoring, attribute-specific recommendations, filters (risk band, contract, tenure, customer ID), better exports
-- **Phase D — Professionalize:** error handling, API status visibility, sample datasets, automated tests, security and logging review, screenshots
+- **Phase D — Professionalize (in progress):** code quality and reliability review (pytest warnings, error handling, database reliability, frontend/backend integration, missing tests), API status visibility, sample datasets, security and logging review, screenshots
 - **Phase E — Expand:** employee attrition, predictive maintenance, and production-quality modules, each with independent data and modeling logic
 
 ## Screenshots
