@@ -1,8 +1,7 @@
+import app.main as main
 from fastapi.testclient import TestClient
 
-from app.main import app
-
-client = TestClient(app)
+client = TestClient(main.app)
 
 
 def test_root_endpoint():
@@ -195,3 +194,30 @@ def test_batch_prediction_invalid_data_type():
     )
 
     assert response.status_code == 422
+
+
+def test_prediction_model_failure(monkeypatch):
+    def raise_error(customer_data):
+        raise RuntimeError("Simulated model failure")
+
+    monkeypatch.setattr(main.model, "predict", raise_error)
+
+    response = client.post("/predict", json=VALID_CUSTOMER)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Customer churn prediction failed."
+
+
+def test_batch_prediction_model_failure(monkeypatch):
+    def raise_error(customer_data):
+        raise RuntimeError("Simulated model failure")
+
+    monkeypatch.setattr(main.model, "predict", raise_error)
+
+    response = client.post(
+        "/predict-batch",
+        json=[VALID_CUSTOMER],
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Batch customer churn prediction failed."

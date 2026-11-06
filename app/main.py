@@ -3,7 +3,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from fastapi import FastAPI
+
 from typing import List
 
 from app.schemas import CustomerChurnRequest
@@ -11,16 +11,18 @@ from app.explainability import explain_prediction
 
 from datetime import datetime
 
-from fastapi import Query
-from pydantic import BaseModel, Field
 
+from pydantic import BaseModel, Field
+import logging
+
+from fastapi import FastAPI, HTTPException, Query
 
 from app.database import get_connection
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 MODEL_PATH = BASE_DIR / "models" / "customer_churn_model.joblib"
-
+logger = logging.getLogger(__name__)
 
 model = joblib.load(MODEL_PATH)
 
@@ -80,12 +82,20 @@ def predict_churn(customer: CustomerChurnRequest):
         ]
     )
 
-    prediction = model.predict(customer_data)[0]
-    probability = model.predict_proba(customer_data)[0][1]
+    try:
+        prediction = model.predict(customer_data)[0]
+        probability = model.predict_proba(customer_data)[0][1]
+    except Exception as exc:
+        logger.exception("Customer churn prediction failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Customer churn prediction failed.",
+        ) from exc
 
     try:
         explanation = explain_prediction(model, customer_data, top_n=5)
     except Exception:
+        logger.exception("Prediction explanation generation failed.")
         explanation = {"higher_risk": [], "lower_risk": []}
 
     return {
@@ -128,8 +138,15 @@ def predict_batch(customers: List[CustomerChurnRequest]):
         ]
     )
 
-    predictions = model.predict(customer_data)
-    probabilities = model.predict_proba(customer_data)[:, 1]
+    try:
+        predictions = model.predict(customer_data)
+        probabilities = model.predict_proba(customer_data)[:, 1]
+    except Exception as exc:
+        logger.exception("Batch customer churn prediction failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Batch customer churn prediction failed.",
+        ) from exc
 
     results = []
 
