@@ -216,3 +216,42 @@ def test_save_invalid_portfolio_snapshot():
     )
 
     assert response.status_code == 422
+def test_get_portfolio_history_database_failure(monkeypatch):
+    def raise_database_error():
+        raise RuntimeError("Database unavailable")
+
+    monkeypatch.setattr(
+        main,
+        "get_connection",
+        raise_database_error,
+    )
+
+    response = client.get("/portfolio-history")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Database service temporarily unavailable."
+
+
+def test_save_portfolio_snapshot_database_failure(monkeypatch):
+    def raise_database_error():
+        raise RuntimeError("Database unavailable")
+
+    monkeypatch.setattr(
+        main,
+        "get_connection",
+        raise_database_error,
+    )
+
+    snapshot = {
+        "analysis_timestamp": "2026-10-30T10:00:00Z",
+        "total_customers": 100,
+        "high_risk": 20,
+        "moderate_risk": 30,
+        "low_risk": 50,
+        "average_churn_probability_pct": 35.5,
+    }
+
+    response = client.post("/portfolio-history", json=snapshot)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Database service temporarily unavailable."
