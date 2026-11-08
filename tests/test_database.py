@@ -216,6 +216,8 @@ def test_save_invalid_portfolio_snapshot():
     )
 
     assert response.status_code == 422
+
+
 def test_get_portfolio_history_database_failure(monkeypatch):
     def raise_database_error():
         raise RuntimeError("Database unavailable")
@@ -255,3 +257,46 @@ def test_save_portfolio_snapshot_database_failure(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Database service temporarily unavailable."
+
+
+def test_save_portfolio_snapshot_rolls_back_on_insert_failure(monkeypatch):
+    connection, cursor = create_mock_connection()
+    cursor.fetchone.return_value = None
+
+    def execute_query(query, parameters=None):
+        if "INSERT INTO portfolio_history" in query:
+            raise RuntimeError("Simulated insert failure")
+
+    cursor.execute.side_effect = execute_query
+
+    class MockConnectionContext:
+        def __enter__(self):
+            return connection
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            if exc_type is not None:
+                connection.rollback()
+            else:
+                connection.commit()
+            return False
+
+    monkeypatch.setattr(
+        main,
+        "get_connection",
+        lambda: MockConnectionContext(),
+    )
+
+    snapshot = {
+        "analysis_timestamp": "2026-10-30T10:00:00Z",
+        "total_customers": 100,
+        "high_risk": 20,
+        "moderate_risk": 30,
+        "low_risk": 50,
+        "average_churn_probability_pct": 35.5,
+    }
+
+    response = client.post("/portfolio-history", json=snapshot)
+
+    assert response.status_code == 503
+    connection.rollback.assert_called_once()
+    connection.commit.assert_not_called()
