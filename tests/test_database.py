@@ -300,3 +300,25 @@ def test_save_portfolio_snapshot_rolls_back_on_insert_failure(monkeypatch):
     assert response.status_code == 503
     connection.rollback.assert_called_once()
     connection.commit.assert_not_called()
+
+
+def test_get_connection_propagates_connection_failure(monkeypatch):
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://user:password@localhost:5432/prodintel",
+    )
+
+    def raise_connection_error(*args, **kwargs):
+        raise database.psycopg.OperationalError("Unable to connect to database")
+
+    monkeypatch.setattr(
+        database.psycopg,
+        "connect",
+        raise_connection_error,
+    )
+
+    with pytest.raises(
+        database.psycopg.OperationalError,
+        match="Unable to connect to database",
+    ):
+        database.get_connection()
