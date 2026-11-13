@@ -253,3 +253,141 @@ _Add screenshots here: customer prediction, SHAP explanation, portfolio overview
 ## Author
 
 **Tanish Gupta** — [GitHub: OfficialTanishGupta](https://github.com/OfficialTanishGupta)
+
+---
+
+## Employee Attrition Intelligence — Progress Summary
+
+We've started adding **Employee Attrition Intelligence** as a separate use case within ProdIntel, alongside the existing Customer Churn Intelligence module. The existing customer churn implementation remains unchanged.
+
+### 1. Dataset and Exploration
+
+**Status: Completed**
+
+- Added the IBM HR Analytics Employee Attrition dataset: `data/raw/employee_attrition.csv`
+- Dataset contains 1,470 employee records and 35 columns.
+- Checked missing values, duplicate records and target distribution.
+- Removed three constant columns and the employee ID during preprocessing.
+- Identified important attrition patterns:
+  - Overtime employees have higher attrition.
+  - Sales Representatives have particularly high attrition.
+  - Frequent business travel is associated with higher attrition.
+  - Single employees show higher attrition in this dataset.
+  - Younger employees and employees with shorter company tenure show higher attrition trends.
+
+Notebook: `notebooks/01_employee_attrition_data_exploration.ipynb`
+
+### 2. Data Preprocessing
+
+**Status: Completed**
+
+Created: `notebooks/02_employee_attrition_preprocessing.ipynb`
+
+Work completed:
+
+- Removed irrelevant and constant columns.
+- Converted Attrition target into binary values:
+  - No = 0
+  - Yes = 1
+- Separated numerical and categorical features.
+- Applied StandardScaler to numerical features.
+- Applied OneHotEncoder to categorical features.
+- Used stratified data splitting.
+
+Saved cleaned dataset: `data/processed/employee_attrition_cleaned.csv`
+
+### 3. Model Training and Comparison
+
+**Status: Completed**
+
+Created: `notebooks/03_employee_attrition_model_training.ipynb`
+
+Initially trained and compared four machine learning algorithms:
+
+1. Logistic Regression
+2. Decision Tree
+3. Random Forest
+4. Gradient Boosting
+
+Used accuracy, precision, recall, F1-score and ROC-AUC to evaluate performance.
+
+Our validation results currently favor Logistic Regression.
+
+### 4. Improved Validation Workflow
+
+**Status: Completed**
+
+We improved the original training workflow to avoid selecting a model threshold using the final test data.
+
+Current split:
+
+| Dataset    | Records | Purpose                           |
+| ---------- | ------- | --------------------------------- |
+| Training   | 882     | Train models                      |
+| Validation | 294     | Compare models and tune threshold |
+| Testing    | 294     | Final evaluation                  |
+
+Preprocessing produces 51 encoded features.
+
+The models now use a pipeline that fits preprocessing only on training data.
+
+### 5. Current Best Model
+
+**Leading candidate: Logistic Regression**
+
+| Metric    | Validation result |
+| --------- | ----------------- |
+| Accuracy  | 74.83%            |
+| Precision | 35.79%            |
+| Recall    | 72.34%            |
+| F1-score  | 47.89%            |
+| ROC-AUC   | 81.75%            |
+
+This is our current leading candidate, not yet the finalized production model.
+
+### 6. What Remains to Be Done
+
+Here is our roadmap from this point:
+
+1. **Decision threshold tuning**
+   Review the precision-recall graph and choose an appropriate threshold using validation data.
+2. **Final model evaluation**
+   Evaluate Logistic Regression on the untouched test set using the selected threshold.
+3. **Model explainability**
+   Identify important employee attrition factors using feature importance and SHAP where appropriate.
+4. **Model saving**
+   Save the trained preprocessing and prediction pipeline as a Joblib model.
+5. **FastAPI integration**
+   Add employee attrition prediction endpoints without disturbing customer churn endpoints.
+6. **Streamlit dashboard**
+   Build a separate Employee Attrition Intelligence dashboard.
+7. **Testing and deployment**
+   Add API tests, dashboard checks and database integration if needed, then deploy through Render.
+
+### 7. Current Project Structure
+
+```
+ProdIntel/
+│
+├── app/
+│   ├── main.py
+│   ├── customer_ui.py
+│   ├── database.py
+│   └── pages/
+│
+├── data/
+│   ├── raw/
+│   │   ├── telco_customer_churn.csv
+│   │   └── employee_attrition.csv
+│   └── processed/
+│       ├── telco_customer_churn_cleaned.csv
+│       └── employee_attrition_cleaned.csv
+│
+├── models/
+│
+├── notebooks/
+│   ├── 01_employee_attrition_data_exploration.ipynb
+│   ├── 02_employee_attrition_preprocessing.ipynb
+│   └── 03_employee_attrition_model_training.ipynb
+│
+```
