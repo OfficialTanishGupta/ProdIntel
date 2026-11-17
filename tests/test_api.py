@@ -221,3 +221,107 @@ def test_batch_prediction_model_failure(monkeypatch):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Batch customer churn prediction failed."
+
+
+VALID_EMPLOYEE = {
+    "age": 35,
+    "business_travel": "Travel_Rarely",
+    "daily_rate": 1100,
+    "department": "Research & Development",
+    "distance_from_home": 5,
+    "education": 3,
+    "education_field": "Life Sciences",
+    "environment_satisfaction": 3,
+    "gender": "Male",
+    "hourly_rate": 65,
+    "job_involvement": 3,
+    "job_level": 2,
+    "job_role": "Research Scientist",
+    "job_satisfaction": 3,
+    "marital_status": "Married",
+    "monthly_income": 5000,
+    "monthly_rate": 15000,
+    "num_companies_worked": 2,
+    "overtime": "No",
+    "percent_salary_hike": 14,
+    "performance_rating": 3,
+    "relationship_satisfaction": 3,
+    "stock_option_level": 1,
+    "total_working_years": 10,
+    "training_times_last_year": 3,
+    "work_life_balance": 3,
+    "years_at_company": 5,
+    "years_in_current_role": 3,
+    "years_since_last_promotion": 1,
+    "years_with_curr_manager": 3,
+}
+
+
+def test_employee_attrition_prediction_endpoint():
+    response = client.post(
+        "/predict-attrition",
+        json=VALID_EMPLOYEE,
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["prediction"] in ["Yes", "No"]
+    assert 0 <= data["attrition_probability"] <= 1
+    assert data["threshold"] == 0.75
+
+
+def test_employee_attrition_missing_required_field():
+    invalid_employee = VALID_EMPLOYEE.copy()
+    del invalid_employee["age"]
+
+    response = client.post(
+        "/predict-attrition",
+        json=invalid_employee,
+    )
+
+    assert response.status_code == 422
+
+
+def test_employee_attrition_invalid_categorical_value():
+    invalid_employee = VALID_EMPLOYEE.copy()
+    invalid_employee["department"] = "Invalid Department"
+
+    response = client.post(
+        "/predict-attrition",
+        json=invalid_employee,
+    )
+
+    assert response.status_code == 422
+
+
+def test_employee_attrition_negative_numeric_value():
+    invalid_employee = VALID_EMPLOYEE.copy()
+    invalid_employee["age"] = -5
+
+    response = client.post(
+        "/predict-attrition",
+        json=invalid_employee,
+    )
+
+    assert response.status_code == 422
+
+
+def test_employee_attrition_model_failure(monkeypatch):
+    def raise_error(employee_data):
+        raise RuntimeError("Simulated attrition model failure")
+
+    monkeypatch.setattr(
+        main.employee_attrition_model,
+        "predict_proba",
+        raise_error,
+    )
+
+    response = client.post(
+        "/predict-attrition",
+        json=VALID_EMPLOYEE,
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == ("Employee attrition prediction failed.")

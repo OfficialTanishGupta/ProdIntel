@@ -2,6 +2,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
+from app.schemas import CustomerChurnRequest, EmployeeAttritionRequest
 
 
 from typing import List
@@ -25,6 +26,12 @@ MODEL_PATH = BASE_DIR / "models" / "customer_churn_model.joblib"
 logger = logging.getLogger(__name__)
 
 model = joblib.load(MODEL_PATH)
+EMPLOYEE_ATTRITION_MODEL_PATH = BASE_DIR / "models" / "employee_attrition_model.joblib"
+
+employee_attrition_bundle = joblib.load(EMPLOYEE_ATTRITION_MODEL_PATH)
+
+employee_attrition_model = employee_attrition_bundle["model"]
+employee_attrition_threshold = float(employee_attrition_bundle["threshold"])
 
 
 class PortfolioSnapshot(BaseModel):
@@ -172,6 +179,64 @@ def predict_batch(customers: List[CustomerChurnRequest]):
     return {
         "total_customers": len(results),
         "results": results,
+    }
+
+
+@app.post("/predict-attrition")
+def predict_employee_attrition(employee: EmployeeAttritionRequest):
+    employee_data = pd.DataFrame(
+        [
+            {
+                "Age": employee.age,
+                "BusinessTravel": employee.business_travel,
+                "DailyRate": employee.daily_rate,
+                "Department": employee.department,
+                "DistanceFromHome": employee.distance_from_home,
+                "Education": employee.education,
+                "EducationField": employee.education_field,
+                "EnvironmentSatisfaction": employee.environment_satisfaction,
+                "Gender": employee.gender,
+                "HourlyRate": employee.hourly_rate,
+                "JobInvolvement": employee.job_involvement,
+                "JobLevel": employee.job_level,
+                "JobRole": employee.job_role,
+                "JobSatisfaction": employee.job_satisfaction,
+                "MaritalStatus": employee.marital_status,
+                "MonthlyIncome": employee.monthly_income,
+                "MonthlyRate": employee.monthly_rate,
+                "NumCompaniesWorked": employee.num_companies_worked,
+                "OverTime": employee.overtime,
+                "PercentSalaryHike": employee.percent_salary_hike,
+                "PerformanceRating": employee.performance_rating,
+                "RelationshipSatisfaction": employee.relationship_satisfaction,
+                "StockOptionLevel": employee.stock_option_level,
+                "TotalWorkingYears": employee.total_working_years,
+                "TrainingTimesLastYear": employee.training_times_last_year,
+                "WorkLifeBalance": employee.work_life_balance,
+                "YearsAtCompany": employee.years_at_company,
+                "YearsInCurrentRole": employee.years_in_current_role,
+                "YearsSinceLastPromotion": employee.years_since_last_promotion,
+                "YearsWithCurrManager": employee.years_with_curr_manager,
+            }
+        ]
+    )
+
+    try:
+        probability = float(employee_attrition_model.predict_proba(employee_data)[0][1])
+
+        prediction = "Yes" if probability >= employee_attrition_threshold else "No"
+
+    except Exception as exc:
+        logger.exception("Employee attrition prediction failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Employee attrition prediction failed.",
+        ) from exc
+
+    return {
+        "prediction": prediction,
+        "attrition_probability": round(probability, 4),
+        "threshold": employee_attrition_threshold,
     }
 
 

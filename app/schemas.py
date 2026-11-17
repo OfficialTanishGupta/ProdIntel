@@ -47,3 +47,53 @@ class CustomerChurnRequest(BaseModel):
         "Bank transfer (automatic)",
         "Credit card (automatic)",
     ]
+
+
+class EmployeeAttritionRequest(BaseModel):
+    age: int = Field(ge=18, le=100)
+    business_travel: Literal["Non-Travel", "Travel_Frequently", "Travel_Rarely"]
+    daily_rate: int = Field(ge=0)
+    department: Literal["Human Resources", "Research & Development", "Sales"]
+    distance_from_home: int = Field(ge=0)
+    education: int = Field(ge=1, le=5)
+    education_field: Literal[
+        "Human Resources",
+        "Life Sciences",
+        "Marketing",
+        "Medical",
+        "Other",
+        "Technical Degree",
+    ]
+    environment_satisfaction: int = Field(ge=1, le=4)
+    gender: Literal["Female", "Male"]
+    hourly_rate: int = Field(ge=0)
+    job_involvement: int = Field(ge=1, le=4)
+    job_level: int = Field(ge=1, le=5)
+    job_role: Literal[
+        "Healthcare Representative",
+        "Human Resources",
+        "Laboratory Technician",
+        "Manager",
+        "Manufacturing Director",
+        "Research Director",
+        "Research Scientist",
+        "Sales Executive",
+        "Sales Representative",
+    ]
+    job_satisfaction: int = Field(ge=1, le=4)
+    marital_status: Literal["Divorced", "Married", "Single"]
+    monthly_income: int = Field(ge=0)
+    monthly_rate: int = Field(ge=0)
+    num_companies_worked: int = Field(ge=0)
+    overtime: Literal["No", "Yes"]
+    percent_salary_hike: int = Field(ge=0, le=100)
+    performance_rating: int = Field(ge=1, le=4)
+    relationship_satisfaction: int = Field(ge=1, le=4)
+    stock_option_level: int = Field(ge=0, le=3)
+    total_working_years: int = Field(ge=0)
+    training_times_last_year: int = Field(ge=0)
+    work_life_balance: int = Field(ge=1, le=4)
+    years_at_company: int = Field(ge=0)
+    years_in_current_role: int = Field(ge=0)
+    years_since_last_promotion: int = Field(ge=0)
+    years_with_curr_manager: int = Field(ge=0)
