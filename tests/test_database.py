@@ -1,5 +1,4 @@
-from unittest.mock import MagicMock
-
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,67 +8,79 @@ import app.main as main
 client = TestClient(main.app)
 
 
+VALID_SNAPSHOT = {
+    "analysis_timestamp": "2026-11-19T10:00:00+05:30",
+    "total_customers": 100,
+    "high_risk": 20,
+    "moderate_risk": 30,
+    "low_risk": 50,
+    "average_churn_probability_pct": 35.5,
+}
+
+
 # --------------------------------------------------
-# Database configuration tests
+# CSV storage tests
 # --------------------------------------------------
 
 
-def test_get_database_url_missing(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+def test_load_portfolio_history_missing_file(tmp_path, monkeypatch):
+    history_file = tmp_path / "portfolio_history.csv"
+    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
 
-    with pytest.raises(RuntimeError, match="DATABASE_URL"):
-        database.get_database_url()
-
-
-def test_get_database_url_normalizes_postgres(monkeypatch):
-    monkeypatch.setenv(
-        "DATABASE_URL",
-        "postgres://user:password@localhost:5432/prodintel",
-    )
-
-    result = database.get_database_url()
-
-    assert result.startswith("postgresql://")
+    assert database.load_portfolio_history() == []
 
 
-def test_get_connection_uses_configured_database(monkeypatch):
-    monkeypatch.setenv(
-        "DATABASE_URL",
-        "postgresql://user:password@localhost:5432/prodintel",
-    )
+def test_save_portfolio_snapshot_creates_csv(tmp_path, monkeypatch):
+    history_file = tmp_path / "portfolio_history.csv"
+    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
 
-    mock_connect = MagicMock()
-    monkeypatch.setattr(database.psycopg, "connect", mock_connect)
+    snapshot = main.PortfolioSnapshot(**VALID_SNAPSHOT)
 
-    database.get_connection()
+    result = database.save_portfolio_snapshot(snapshot)
 
-    mock_connect.assert_called_once()
+    assert result["saved"] is True
+    assert history_file.exists()
 
-    args, kwargs = mock_connect.call_args
+    history_df = pd.read_csv(history_file)
 
-    assert args[0].startswith("postgresql://")
-    assert kwargs["connect_timeout"] == 10
-    assert "row_factory" in kwargs
+    assert len(history_df) == 1
+    assert history_df.iloc[0]["total_customers"] == 100
+    assert history_df.iloc[0]["high_risk"] == 20
 
 
-def test_initialize_database_creates_table(monkeypatch):
-    connection = MagicMock()
-    cursor = MagicMock()
+def test_save_portfolio_snapshot_prevents_duplicates(tmp_path, monkeypatch):
+    history_file = tmp_path / "portfolio_history.csv"
+    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
 
-    connection.__enter__.return_value = connection
-    connection.cursor.return_value.__enter__.return_value = cursor
+    snapshot = main.PortfolioSnapshot(**VALID_SNAPSHOT)
 
-    monkeypatch.setattr(
-        database,
-        "get_connection",
-        lambda: connection,
-    )
+    first_result = database.save_portfolio_snapshot(snapshot)
+    second_result = database.save_portfolio_snapshot(snapshot)
 
-    database.initialize_database()
+    assert first_result["saved"] is True
+    assert second_result["saved"] is False
 
-    executed_query = cursor.execute.call_args[0][0]
+    history_df = pd.read_csv(history_file)
+    assert len(history_df) == 1
 
-    assert "CREATE TABLE IF NOT EXISTS portfolio_history" in executed_query
+
+def test_load_portfolio_history_respects_limit(tmp_path, monkeypatch):
+    history_file = tmp_path / "portfolio_history.csv"
+    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
+
+    records = [
+        {
+            **VALID_SNAPSHOT,
+            "analysis_timestamp": f"2026-11-19T10:{minute:02d}:00+05:30",
+        }
+        for minute in range(3)
+    ]
+
+    pd.DataFrame(records).to_csv(history_file, index=False)
+
+    history = database.load_portfolio_history(limit=2)
+
+    assert len(history) == 2
 
 
 # --------------------------------------------------
@@ -77,22 +88,10 @@ def test_initialize_database_creates_table(monkeypatch):
 # --------------------------------------------------
 
 
-def create_mock_connection():
-    connection = MagicMock()
-    cursor = MagicMock()
-
-    connection.__enter__.return_value = connection
-    connection.cursor.return_value.__enter__.return_value = cursor
-
-    return connection, cursor
-
-
 def test_get_portfolio_history(monkeypatch):
-    connection, cursor = create_mock_connection()
-
-    cursor.fetchall.return_value = [
+    expected_history = [
         {
-            "analysis_timestamp": "2026-10-30T10:00:00Z",
+            "analysis_timestamp": "2026-11-19T10:00:00+05:30",
             "total_customers": 100,
             "high_risk": 20,
             "moderate_risk": 30,
@@ -103,111 +102,40 @@ def test_get_portfolio_history(monkeypatch):
 
     monkeypatch.setattr(
         main,
-        "get_connection",
-        lambda: connection,
+        "load_portfolio_history",
+        lambda limit: expected_history,
     )
 
-    response = client.get("/portfolio-history")
+    response = client.get("/portfolio-history?limit=100")
 
     assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["total_snapshots"] == 1
-    assert len(data["history"]) == 1
-    assert data["history"][0]["total_customers"] == 100
+    assert response.json()["total_snapshots"] == 1
+    assert response.json()["history"] == expected_history
 
 
-def test_get_portfolio_history_respects_limit(monkeypatch):
-    connection, cursor = create_mock_connection()
-    cursor.fetchall.return_value = []
-
+def test_save_portfolio_history_api(monkeypatch):
     monkeypatch.setattr(
         main,
-        "get_connection",
-        lambda: connection,
+        "save_portfolio_snapshot",
+        lambda snapshot: {
+            "saved": True,
+            "message": "Portfolio snapshot saved successfully.",
+        },
     )
 
-    response = client.get("/portfolio-history?limit=10")
-
-    assert response.status_code == 200
-
-    executed_query = cursor.execute.call_args[0][0]
-    query_parameters = cursor.execute.call_args[0][1]
-
-    assert "LIMIT %s" in executed_query
-    assert query_parameters == (10,)
-
-
-def test_save_portfolio_snapshot(monkeypatch):
-    connection, cursor = create_mock_connection()
-
-    # No existing duplicate snapshot.
-    cursor.fetchone.return_value = None
-
-    monkeypatch.setattr(
-        main,
-        "get_connection",
-        lambda: connection,
+    response = client.post(
+        "/portfolio-history",
+        json=VALID_SNAPSHOT,
     )
-
-    snapshot = {
-        "analysis_timestamp": "2026-10-30T10:00:00Z",
-        "total_customers": 100,
-        "high_risk": 20,
-        "moderate_risk": 30,
-        "low_risk": 50,
-        "average_churn_probability_pct": 35.5,
-    }
-
-    response = client.post("/portfolio-history", json=snapshot)
 
     assert response.status_code == 200
     assert response.json()["saved"] is True
 
-    executed_query = cursor.execute.call_args[0][0]
 
-    assert "INSERT INTO portfolio_history" in executed_query
-
-
-def test_save_duplicate_portfolio_snapshot(monkeypatch):
-    connection, cursor = create_mock_connection()
-
-    # Simulate an existing matching snapshot.
-    cursor.fetchone.return_value = {"id": 1}
-
-    monkeypatch.setattr(
-        main,
-        "get_connection",
-        lambda: connection,
-    )
-
-    snapshot = {
-        "analysis_timestamp": "2026-10-30T10:00:00Z",
-        "total_customers": 100,
-        "high_risk": 20,
-        "moderate_risk": 30,
-        "low_risk": 50,
-        "average_churn_probability_pct": 35.5,
-    }
-
-    response = client.post("/portfolio-history", json=snapshot)
-
-    assert response.status_code == 200
-    assert response.json()["saved"] is False
-
-    # Only the SELECT query should have executed.
-    assert cursor.execute.call_count == 1
-
-
-def test_save_invalid_portfolio_snapshot():
+def test_save_portfolio_history_invalid_snapshot():
     invalid_snapshot = {
-        "analysis_timestamp": "2026-10-30T10:00:00Z",
-        "total_customers": -10,
-        "high_risk": 20,
-        "moderate_risk": 30,
-        "low_risk": 50,
-        "average_churn_probability_pct": 35.5,
+        **VALID_SNAPSHOT,
+        "total_customers": -1,
     }
 
     response = client.post(
@@ -218,107 +146,34 @@ def test_save_invalid_portfolio_snapshot():
     assert response.status_code == 422
 
 
-def test_get_portfolio_history_database_failure(monkeypatch):
-    def raise_database_error():
-        raise RuntimeError("Database unavailable")
+def test_get_portfolio_history_storage_failure(monkeypatch):
+    def raise_error(limit):
+        raise OSError("CSV storage unavailable")
 
     monkeypatch.setattr(
         main,
-        "get_connection",
-        raise_database_error,
+        "load_portfolio_history",
+        raise_error,
     )
 
     response = client.get("/portfolio-history")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Database service temporarily unavailable."
 
 
-def test_save_portfolio_snapshot_database_failure(monkeypatch):
-    def raise_database_error():
-        raise RuntimeError("Database unavailable")
-
-    monkeypatch.setattr(
-        main,
-        "get_connection",
-        raise_database_error,
-    )
-
-    snapshot = {
-        "analysis_timestamp": "2026-10-30T10:00:00Z",
-        "total_customers": 100,
-        "high_risk": 20,
-        "moderate_risk": 30,
-        "low_risk": 50,
-        "average_churn_probability_pct": 35.5,
-    }
-
-    response = client.post("/portfolio-history", json=snapshot)
-
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Database service temporarily unavailable."
-
-
-def test_save_portfolio_snapshot_rolls_back_on_insert_failure(monkeypatch):
-    connection, cursor = create_mock_connection()
-    cursor.fetchone.return_value = None
-
-    def execute_query(query, parameters=None):
-        if "INSERT INTO portfolio_history" in query:
-            raise RuntimeError("Simulated insert failure")
-
-    cursor.execute.side_effect = execute_query
-
-    class MockConnectionContext:
-        def __enter__(self):
-            return connection
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            if exc_type is not None:
-                connection.rollback()
-            else:
-                connection.commit()
-            return False
+def test_save_portfolio_history_storage_failure(monkeypatch):
+    def raise_error(snapshot):
+        raise OSError("CSV storage unavailable")
 
     monkeypatch.setattr(
         main,
-        "get_connection",
-        lambda: MockConnectionContext(),
+        "save_portfolio_snapshot",
+        raise_error,
     )
 
-    snapshot = {
-        "analysis_timestamp": "2026-10-30T10:00:00Z",
-        "total_customers": 100,
-        "high_risk": 20,
-        "moderate_risk": 30,
-        "low_risk": 50,
-        "average_churn_probability_pct": 35.5,
-    }
-
-    response = client.post("/portfolio-history", json=snapshot)
+    response = client.post(
+        "/portfolio-history",
+        json=VALID_SNAPSHOT,
+    )
 
     assert response.status_code == 503
-    connection.rollback.assert_called_once()
-    connection.commit.assert_not_called()
-
-
-def test_get_connection_propagates_connection_failure(monkeypatch):
-    monkeypatch.setenv(
-        "DATABASE_URL",
-        "postgresql://user:password@localhost:5432/prodintel",
-    )
-
-    def raise_connection_error(*args, **kwargs):
-        raise database.psycopg.OperationalError("Unable to connect to database")
-
-    monkeypatch.setattr(
-        database.psycopg,
-        "connect",
-        raise_connection_error,
-    )
-
-    with pytest.raises(
-        database.psycopg.OperationalError,
-        match="Unable to connect to database",
-    ):
-        database.get_connection()

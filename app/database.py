@@ -1,44 +1,84 @@
-import os
-from typing import Any, cast
+from pathlib import Path
 
-import psycopg
-from psycopg.rows import dict_row
+import pandas as pd
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-def get_database_url():
-    """Read the database connection URL from the environment."""
-    database_url = os.getenv("DATABASE_URL")
+HISTORY_FILE = BASE_DIR / "data" / "portfolio_history" / "portfolio_trend_history.csv"
 
-    if not database_url:
-        raise RuntimeError("DATABASE_URL environment variable is not configured.")
-
-    # Render PostgreSQL URLs may use postgres:// or postgresql://.
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-    return database_url
+HISTORY_COLUMNS = [
+    "analysis_timestamp",
+    "total_customers",
+    "high_risk",
+    "moderate_risk",
+    "low_risk",
+    "average_churn_probability_pct",
+]
 
 
-def get_connection() -> psycopg.Connection[Any]:
-    return psycopg.connect(
-        get_database_url(),
-        row_factory=cast(Any, dict_row),
-        connect_timeout=10,
+def load_portfolio_history(limit: int = 500):
+    """Load portfolio snapshots from local CSV storage."""
+    if not HISTORY_FILE.exists():
+        return []
+
+    history_df = pd.read_csv(HISTORY_FILE)
+
+    if history_df.empty:
+        return []
+
+    history_df = history_df[HISTORY_COLUMNS]
+    history_df = history_df.tail(limit)
+
+    return history_df.to_dict(orient="records")
+
+
+def save_portfolio_snapshot(snapshot):
+    """Save a portfolio snapshot to local CSV storage."""
+    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    timestamp = snapshot.analysis_timestamp.isoformat()
+
+    record = {
+        "analysis_timestamp": timestamp,
+        "total_customers": snapshot.total_customers,
+        "high_risk": snapshot.high_risk,
+        "moderate_risk": snapshot.moderate_risk,
+        "low_risk": snapshot.low_risk,
+        "average_churn_probability_pct": (snapshot.average_churn_probability_pct),
+    }
+
+    if HISTORY_FILE.exists():
+        history_df = pd.read_csv(HISTORY_FILE)
+    else:
+        history_df = pd.DataFrame(columns=HISTORY_COLUMNS)
+
+    if not history_df.empty:
+        duplicate = (
+            (history_df["analysis_timestamp"].astype(str) == timestamp)
+            & (history_df["total_customers"] == record["total_customers"])
+            & (history_df["high_risk"] == record["high_risk"])
+            & (history_df["moderate_risk"] == record["moderate_risk"])
+            & (history_df["low_risk"] == record["low_risk"])
+            & (
+                history_df["average_churn_probability_pct"]
+                == record["average_churn_probability_pct"]
+            )
+        ).any()
+
+        if duplicate:
+            return {
+                "saved": False,
+                "message": "Portfolio snapshot already exists.",
+            }
+
+    history_df = pd.concat(
+        [history_df, pd.DataFrame([record])],
+        ignore_index=True,
     )
 
+    history_df.to_csv(HISTORY_FILE, index=False)
 
-def initialize_database():
-    """Create the portfolio history table if it does not exist."""
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS portfolio_history (
-                    id BIGSERIAL PRIMARY KEY,
-                    analysis_timestamp TIMESTAMPTZ NOT NULL,
-                    total_customers INTEGER NOT NULL,
-                    high_risk INTEGER NOT NULL,
-                    moderate_risk INTEGER NOT NULL,
-                    low_risk INTEGER NOT NULL,
-                    average_churn_probability_pct DOUBLE PRECISION NOT NULL
-                );
-                """)
+    return {
+        "saved": True,
+        "message": "Portfolio snapshot saved successfully.",
+    }

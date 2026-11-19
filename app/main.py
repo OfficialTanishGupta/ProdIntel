@@ -17,8 +17,7 @@ from pydantic import BaseModel, Field
 import logging
 
 from fastapi import FastAPI, HTTPException, Query
-
-from app.database import get_connection
+from app.database import load_portfolio_history, save_portfolio_snapshot
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -243,101 +242,26 @@ def predict_employee_attrition(employee: EmployeeAttritionRequest):
 @app.get("/portfolio-history")
 def get_portfolio_history(limit: int = Query(default=500, ge=1, le=5000)):
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                        analysis_timestamp,
-                        total_customers,
-                        high_risk,
-                        moderate_risk,
-                        low_risk,
-                        average_churn_probability_pct
-                    FROM portfolio_history
-                    ORDER BY analysis_timestamp DESC
-                    LIMIT %s
-                    """,
-                    (limit,),
-                )
-                history = cursor.fetchall()
-
+        history = load_portfolio_history(limit=limit)
         return {
             "total_snapshots": len(history),
             "history": history,
         }
-
     except Exception as exc:
         logger.exception("Failed to retrieve portfolio history.")
         raise HTTPException(
             status_code=503,
-            detail="Database service temporarily unavailable.",
+            detail="Portfolio history service temporarily unavailable.",
         ) from exc
 
 
 @app.post("/portfolio-history")
-def save_portfolio_snapshot(snapshot: PortfolioSnapshot):
+def save_portfolio_snapshot_endpoint(snapshot: PortfolioSnapshot):
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id
-                    FROM portfolio_history
-                    WHERE analysis_timestamp = %s
-                      AND total_customers = %s
-                      AND high_risk = %s
-                      AND moderate_risk = %s
-                      AND low_risk = %s
-                      AND average_churn_probability_pct = %s
-                    LIMIT 1
-                    """,
-                    (
-                        snapshot.analysis_timestamp,
-                        snapshot.total_customers,
-                        snapshot.high_risk,
-                        snapshot.moderate_risk,
-                        snapshot.low_risk,
-                        snapshot.average_churn_probability_pct,
-                    ),
-                )
-
-                if cursor.fetchone():
-                    return {
-                        "saved": False,
-                        "message": "Portfolio snapshot already exists.",
-                    }
-
-                cursor.execute(
-                    """
-                    INSERT INTO portfolio_history (
-                        analysis_timestamp,
-                        total_customers,
-                        high_risk,
-                        moderate_risk,
-                        low_risk,
-                        average_churn_probability_pct
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        snapshot.analysis_timestamp,
-                        snapshot.total_customers,
-                        snapshot.high_risk,
-                        snapshot.moderate_risk,
-                        snapshot.low_risk,
-                        snapshot.average_churn_probability_pct,
-                    ),
-                )
-
-        return {
-            "saved": True,
-            "message": "Portfolio snapshot saved successfully.",
-        }
-
+        return save_portfolio_snapshot(snapshot)
     except Exception as exc:
-        logger.exception("Failed to save portfolio snapshot.")
+        logger.exception("Failed to save portfolio history.")
         raise HTTPException(
             status_code=503,
-            detail="Database service temporarily unavailable.",
+            detail="Portfolio history service temporarily unavailable.",
         ) from exc
