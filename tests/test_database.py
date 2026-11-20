@@ -1,4 +1,4 @@
-import pandas as pd
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,7 +6,6 @@ import app.database as database
 import app.main as main
 
 client = TestClient(main.app)
-
 
 VALID_SNAPSHOT = {
     "analysis_timestamp": "2026-11-19T10:00:00+05:30",
@@ -18,85 +17,129 @@ VALID_SNAPSHOT = {
 }
 
 
+class FakeCursor:
+    def __init__(self, fetchone_result=None, fetchall_result=None):
+        self.fetchone_result = fetchone_result
+        self.fetchall_result = fetchall_result or []
+        self.rowcount = 1
+        self.executed = []
+
+    def execute(self, query, params=None):
+        self.executed.append((query, params))
+
+    def fetchone(self):
+        return self.fetchone_result
+
+    def fetchall(self):
+        return self.fetchall_result
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+class FakeConnection:
+    def __init__(self, cursor):
+        self.fake_cursor = cursor
+        self.executed = []
+
+    def cursor(self):
+        return self.fake_cursor
+
+    def execute(self, query, params=None):
+        self.executed.append((query, params))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
 # --------------------------------------------------
-# CSV storage tests
+# PostgreSQL storage tests
 # --------------------------------------------------
 
+def test_initialize_database(monkeypatch):
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
 
-def test_load_portfolio_history_missing_file(tmp_path, monkeypatch):
-    history_file = tmp_path / "portfolio_history.csv"
-    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
+    monkeypatch.setattr(
+        database, "get_connection", lambda: connection
+    )
 
-    assert database.load_portfolio_history() == []
+    database.initialize_database()
+
+    assert len(connection.executed) == 1
+    assert "CREATE TABLE IF NOT EXISTS portfolio_history" in (
+        connection.executed[0][0]
+    )
 
 
-def test_save_portfolio_snapshot_creates_csv(tmp_path, monkeypatch):
-    history_file = tmp_path / "portfolio_history.csv"
-    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
+def test_load_portfolio_history(monkeypatch):
+    expected = [
+        {
+            "total_customers": 100,
+            "high_risk": 20,
+        }
+    ]
+
+    cursor = FakeCursor(fetchall_result=expected)
+    connection = FakeConnection(cursor)
+
+    monkeypatch.setattr(
+        database, "get_connection", lambda: connection
+    )
+
+    result = database.load_portfolio_history(limit=10)
+
+    assert result == expected
+    assert "ORDER BY analysis_timestamp DESC" in cursor.executed[0][0]
+    assert cursor.executed[0][1] == (10,)
+
+
+def test_save_portfolio_snapshot_success(monkeypatch):
+    cursor = FakeCursor(fetchone_result=None)
+    connection = FakeConnection(cursor)
+
+    monkeypatch.setattr(
+        database, "get_connection", lambda: connection
+    )
 
     snapshot = main.PortfolioSnapshot(**VALID_SNAPSHOT)
-
     result = database.save_portfolio_snapshot(snapshot)
 
     assert result["saved"] is True
-    assert history_file.exists()
-
-    history_df = pd.read_csv(history_file)
-
-    assert len(history_df) == 1
-    assert history_df.iloc[0]["total_customers"] == 100
-    assert history_df.iloc[0]["high_risk"] == 20
+    assert len(cursor.executed) == 2
+    assert "INSERT INTO portfolio_history" in cursor.executed[1][0]
 
 
-def test_save_portfolio_snapshot_prevents_duplicates(tmp_path, monkeypatch):
-    history_file = tmp_path / "portfolio_history.csv"
-    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
+def test_save_portfolio_snapshot_prevents_duplicates(monkeypatch):
+    cursor = FakeCursor(fetchone_result={"id": 1})
+    connection = FakeConnection(cursor)
+
+    monkeypatch.setattr(
+        database, "get_connection", lambda: connection
+    )
 
     snapshot = main.PortfolioSnapshot(**VALID_SNAPSHOT)
+    result = database.save_portfolio_snapshot(snapshot)
 
-    first_result = database.save_portfolio_snapshot(snapshot)
-    second_result = database.save_portfolio_snapshot(snapshot)
-
-    assert first_result["saved"] is True
-    assert second_result["saved"] is False
-
-    history_df = pd.read_csv(history_file)
-    assert len(history_df) == 1
-
-
-def test_load_portfolio_history_respects_limit(tmp_path, monkeypatch):
-    history_file = tmp_path / "portfolio_history.csv"
-    monkeypatch.setattr(database, "HISTORY_FILE", history_file)
-
-    records = [
-        {
-            **VALID_SNAPSHOT,
-            "analysis_timestamp": f"2026-11-19T10:{minute:02d}:00+05:30",
-        }
-        for minute in range(3)
-    ]
-
-    pd.DataFrame(records).to_csv(history_file, index=False)
-
-    history = database.load_portfolio_history(limit=2)
-
-    assert len(history) == 2
+    assert result["saved"] is False
+    assert len(cursor.executed) == 1
 
 
 # --------------------------------------------------
 # Portfolio history API tests
 # --------------------------------------------------
 
-
 def test_get_portfolio_history(monkeypatch):
     expected_history = [
         {
+            **VALID_SNAPSHOT,
             "analysis_timestamp": "2026-11-19T10:00:00+05:30",
-            "total_customers": 100,
-            "high_risk": 20,
-            "moderate_risk": 30,
-            "low_risk": 50,
-            "average_churn_probability_pct": 35.5,
         }
     ]
 
@@ -123,10 +166,7 @@ def test_save_portfolio_history_api(monkeypatch):
         },
     )
 
-    response = client.post(
-        "/portfolio-history",
-        json=VALID_SNAPSHOT,
-    )
+    response = client.post("/portfolio-history", json=VALID_SNAPSHOT)
 
     assert response.status_code == 200
     assert response.json()["saved"] is True
@@ -148,12 +188,10 @@ def test_save_portfolio_history_invalid_snapshot():
 
 def test_get_portfolio_history_storage_failure(monkeypatch):
     def raise_error(limit):
-        raise OSError("CSV storage unavailable")
+        raise RuntimeError("Database unavailable")
 
     monkeypatch.setattr(
-        main,
-        "load_portfolio_history",
-        raise_error,
+        main, "load_portfolio_history", raise_error
     )
 
     response = client.get("/portfolio-history")
@@ -163,12 +201,10 @@ def test_get_portfolio_history_storage_failure(monkeypatch):
 
 def test_save_portfolio_history_storage_failure(monkeypatch):
     def raise_error(snapshot):
-        raise OSError("CSV storage unavailable")
+        raise RuntimeError("Database unavailable")
 
     monkeypatch.setattr(
-        main,
-        "save_portfolio_snapshot",
-        raise_error,
+        main, "save_portfolio_snapshot", raise_error
     )
 
     response = client.post(

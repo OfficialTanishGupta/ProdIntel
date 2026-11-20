@@ -186,14 +186,14 @@ if uploaded_files:
             save_result = save_portfolio_snapshot(snapshot)
 
             if save_result.get("saved"):
-                st.success("Portfolio snapshot saved to CSV history.")
+                st.success("Portfolio snapshot saved to database history.")
             else:
-                st.info("This portfolio snapshot already exists in CSV history.")
+                st.info("This portfolio snapshot already exists in database history.")
 
         except requests.RequestException as exc:
             st.warning(
                 "Predictions completed, but the historical snapshot could not "
-                f"be saved to CSV history: {exc}"
+                f"be saved to database history: {exc}"
             )
 
     if (
